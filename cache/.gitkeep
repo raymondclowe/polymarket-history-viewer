@@ -1,0 +1,3 @@
+# Polymarket History Viewer cache directory
+# JSON cache files are stored here, one per wallet address.
+# Safe to delete — they will be regenerated on next API fetch.

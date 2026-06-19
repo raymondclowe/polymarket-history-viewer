@@ -1,0 +1,15 @@
+[project]
+name = "polymarket-history-viewer"
+version = "0.1.0"
+description = "P&L dashboard for Polymarket trade history — live API + CSV import with pivot-table drill-down"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "streamlit>=1.32",
+    "pandas>=2.0",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.9",
+]
