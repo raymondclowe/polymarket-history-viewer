@@ -14,7 +14,7 @@ edges:
     condition: when setting up the dev environment or running the project for the first time
   - target: patterns/INDEX.md
     condition: when starting a task — check the pattern index for a matching pattern file
-last_updated: 2026-06-19
+last_updated: 2026-06-20  # date-window pagination implemented
 ---
 
 # Session Bootstrap
@@ -42,6 +42,15 @@ Then read this file fully before doing anything else in this session.
 - CSV format detection assumes Buy column exists — may fail on exotic formats
 - Timeframe extraction from title strings is heuristic and may misclassify
 - No pagination in market detail table (all rows rendered in memory)
+
+**Recently fixed:**
+- Coin/timeframe multiselect filters not applying — Streamlit keeps `default=["ALL"]` in the selection when user picks a specific option, making the `"ALL" not in selected` check always False. Fixed by stripping `"ALL"` from the selection when specific options are also chosen.
+- P&L inflated by non-trade event types — DEPOSIT, WITHDRAWAL, TRANSFER were counted as P&L. Fixed by zeroing `signed_usdc` for these types in both API and CSV paths. MERGE correctly remains P&L-positive (give token pair, get $1 back). SPLIT correctly treats as money-out (like BUY).
+- **P&L inflated by time-window asymmetry** — `fetch_all_activity()` stopped paginating at `oldest_ts < since_ts`, so buys outside the selected date range were never loaded, but their exits (redeems/merges) inside the range appeared as pure $1-per-token income. Fix: removed time-window filtering at the data-loading layer entirely.
+- **P&L inflated by dedup on transactionHash** — `deduplicate_rows()` grouped by `transactionHash` and dropped all but the first row per hash. Polymarket batches multiple fills (in different markets!) into a single on-chain tx, so dedup by txhash silently discarded $193 of real P&L data. Fix: removed dedup step entirely from `get_activity()`. Only truly identical rows (all columns equal) could be deduped, which never occurs in practice. Combined with PAGE_SIZE fix, P&L changed from +$47.72 to -$145.23.
+- **P&L inflated by PAGE_SIZE=200** — `fetch_all_activity()` used PAGE_SIZE=200, requiring 20 API calls to get 4000 rows. The `if len(page) < PAGE_SIZE: break` guard on the last partial page (136 rows) truncated real data. Additionally `limit=200` vs `limit=1000` means more pages with larger gaps. Fix: PAGE_SIZE=1000, removed partial-page break.
+- **Time presets all showing same P&L** — display-layer time filter was missing for API data. CSV path had time filtering but API path didn't, so all presets (Today, Last 7d, All time) showed identical values. Fix: added universal `df = df[(timestamp >= since_ts) & (timestamp <= until_ts)]` after both sources load. Cache still holds ALL data; filtering happens at display.
+- **Polymarket API has hard 4000-row offset ceiling per query** — NOT a total data limit. Fix: date-window pagination using `start`/`end` Unix-timestamp params. `fetch_all_activity()` now pre-scans in 30-day leaps to find first activity, then walks forward in 7-day windows, paginating with offset within each. Result: 20,679 rows (5x more), P&L -$1,283.97 vs portfolio -$1,529.72.
 
 ## Routing Table
 

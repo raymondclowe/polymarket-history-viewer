@@ -23,3 +23,6 @@ Lookup table for all pattern files in this directory. Check here before starting
 
 | Pattern | Use when |
 |---------|----------|
+| [streamlit-multiselect-all-filter.md](streamlit-multiselect-all-filter.md) | Streamlit multiselect with "ALL" default fails to filter when user picks a specific option |
+| [dedup-by-txhash.md](dedup-by-txhash.md) | P&L inflated because dedup by transactionHash discards real fills batched in the same on-chain tx |
+| [time-window-asymmetry.md](time-window-asymmetry.md) | P&L inflated because time-window filtering at data-load layer excludes cost basis from outside the window |

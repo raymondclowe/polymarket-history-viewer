@@ -62,10 +62,10 @@ def _color_pnl(val: float) -> str:
 
 
 def _tx_link(tx_hash: str) -> str:
-    """Polymarket transaction link."""
+    """PolygonScan transaction link."""
     if not tx_hash:
         return ""
-    return f"https://polymarket.com/tx/{tx_hash}"
+    return f"https://polygonscan.com/tx/{tx_hash}"
 
 
 # ─────────────────────────────────────────────────────────────
@@ -75,15 +75,16 @@ def _tx_link(tx_hash: str) -> str:
 @st.cache_data(ttl=300, show_spinner="Fetching from API...")
 def _cached_api_fetch(
     wallet: str,
-    since_ts: int,
-    until_ts: int,
     force_refresh: bool = False,
 ) -> tuple[pd.DataFrame, dict]:
-    """Cached wrapper around get_activity."""
+    """Cached wrapper around get_activity.
+
+    No time-window parameters — ALL available data is fetched so that
+    P&L calculations have complete cost basis for every closed position.
+    Time window filtering is applied later at the display layer only.
+    """
     rows, meta = get_activity(
         wallet=wallet,
-        since_ts=since_ts,
-        until_ts=until_ts,
         force_refresh=force_refresh,
     )
     df = api_rows_to_dataframe(rows)
@@ -151,13 +152,13 @@ if source in ("CSV files", "Both"):
     else:
         st.sidebar.warning("No CSV folders found in data/")
 
-# Refresh button (API only)
+# Refresh / clear cache
 force_refresh = False
 if source in ("Live API", "Both"):
-    col1, col2 = st.sidebar.columns([3, 1])
-    if col2.button("🔄", help="Force refresh from API (skip cache)"):
+    if st.sidebar.button("🗑 Clear Cache", help="Delete cached API data and fetch fresh from Polymarket", width="stretch"):
         force_refresh = True
         st.cache_data.clear()
+        st.sidebar.success("Cache cleared — next load will fetch fresh data")
 
 # ─────────────────────────────────────────────────────────────
 # Time filter
@@ -175,7 +176,7 @@ time_presets = {
 preset_cols = st.sidebar.columns(len(time_presets))
 selected_preset = None
 for i, (label, _) in enumerate(time_presets.items()):
-    if preset_cols[i].button(label, use_container_width=True, key=f"preset_{label}"):
+    if preset_cols[i].button(label, width="stretch", key=f"preset_{label}"):
         selected_preset = label
 
 # Initialize session state for date range
@@ -204,21 +205,21 @@ df = pd.DataFrame()
 meta = {}
 
 if source in ("Live API", "Both") and wallet_input:
-    df_api, meta = _cached_api_fetch(wallet_input, since_ts, until_ts, force_refresh)
+    df_api, meta = _cached_api_fetch(wallet_input, force_refresh)
     df = df_api
 
 if source in ("CSV files", "Both") and csv_wallet:
     df_csv = _cached_csv_load(data_dir, wallet_name=csv_wallet)
     if not df_csv.empty:
-        # Time-filter CSV data
-        if "timestamp" in df_csv.columns:
-            df_csv = df_csv[
-                (df_csv["timestamp"] >= since_ts) & (df_csv["timestamp"] <= until_ts)
-            ]
         if source == "Both" and not df.empty:
             df = pd.concat([df, df_csv], ignore_index=True)
         else:
             df = df_csv
+
+# Apply time filter at the display layer (after loading complete data for cost basis).
+# "All time" preset uses since=2020-01-01 so the filter is a no-op.
+if not df.empty and "timestamp" in df.columns:
+    df = df[(df["timestamp"] >= since_ts) & (df["timestamp"] <= until_ts)]
 
 # No data
 if df.empty:
@@ -240,7 +241,7 @@ if meta:
         oow = meta["out_of_window_removed"]
         pct = oow / max(meta.get("total_raw", 1), 1) * 100
         if pct > 50:
-            issues.append(f"⚠️ {oow} rows outside time window ({pct:.0f}% — API returned mostly stale data)")
+            issues.append(f"⚠️ {oow} rows from outside your date range ignored ({pct:.0f}% — API may have sent old data, try a smaller date range)")
         else:
             issues.append(f"📅 {oow} rows outside time window skipped")
     if meta.get("integrity_failures", 0) > 0:
@@ -250,6 +251,16 @@ if meta:
 
     if issues:
         st.info(" | ".join(issues))
+
+# Show data date range so users understand API window limits
+if "timestamp" in df.columns and not df.empty:
+    from datetime import datetime as _dt
+    ts_col = df["timestamp"]
+    oldest = _dt.fromtimestamp(int(ts_col.min()), tz=timezone.utc).strftime("%b %d, %Y")
+    newest = _dt.fromtimestamp(int(ts_col.max()), tz=timezone.utc).strftime("%b %d, %Y")
+    range_msg = f"📅 Data range: {oldest} → {newest} ({len(df):,} rows)"
+
+    st.caption(range_msg)
 
 # ─────────────────────────────────────────────────────────────
 # Coin & Timeframe filters (from actual data)
@@ -280,8 +291,15 @@ with filter_col2:
     )
 
 # Apply filters
+# NOTE: Streamlit multiselect with default=["ALL"] keeps "ALL" selected when the user
+# picks a specific option — the selection becomes ["ALL", "BTC"].
+# We strip "ALL" so the filter actually takes effect.
 
 filtered = df.copy()
+if "ALL" in selected_coins and len(selected_coins) > 1:
+    selected_coins = [c for c in selected_coins if c != "ALL"]
+if "ALL" in selected_tfs and len(selected_tfs) > 1:
+    selected_tfs = [t for t in selected_tfs if t != "ALL"]
 if "ALL" not in selected_coins:
     filtered = filtered[filtered["coin"].isin(selected_coins)]
 if "ALL" not in selected_tfs:
@@ -324,7 +342,7 @@ if not coin_pnl.empty:
         coin_display[["coin", "P&L", "trade_count", "unique_markets", "Win Rate"]].rename(
             columns={"coin": "Coin", "trade_count": "Trades", "unique_markets": "Markets"}
         ),
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
     )
 
@@ -345,20 +363,54 @@ if not tf_pnl.empty:
                 "unique_markets": "Markets",
             }
         ),
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
     )
 
 # ─────────────────────────────────────────────────────────────
-# Market detail table
+# Market detail table (clickable)
 # ─────────────────────────────────────────────────────────────
 
 st.subheader("Market Details")
 market_pnl = compute_per_market_pnl(filtered)
 
 if not market_pnl.empty:
-    # Prepare display table
-    display_cols = {
+    # Determine which column uniquely identifies a market in the raw data
+    _slug_usable = "slug" in filtered.columns and not (
+        filtered["slug"].isna().all() or (filtered["slug"] == "").all()
+    )
+    raw_key_col = "slug" if _slug_usable else "title"
+
+    # Build display DataFrame with a unique key column for lookups
+    mkt = market_pnl.reset_index(drop=True)
+    mkt["_raw_key"] = mkt.get(raw_key_col, mkt.get("title", ""))
+    mkt["_raw_key"] = mkt["_raw_key"].fillna("")
+
+    # Sort
+    sort_col = st.selectbox(
+        "Sort by",
+        options=["P&L", "Market", "Coin", "TF", "Trades", "First Trade", "Last Trade"],
+        index=0,
+        key="market_sort",
+    )
+    sort_map = {
+        "P&L": "pnl",
+        "Market": "display_name",
+        "Coin": "coin",
+        "TF": "timeframe",
+        "Trades": "trade_count",
+        "First Trade": "first_trade",
+        "Last Trade": "last_trade",
+    }
+    sort_by = sort_map.get(sort_col, "pnl")
+    ascending = sort_by == "pnl"  # highest P&L first
+    mkt = mkt.sort_values(sort_by, ascending=not ascending).reset_index(drop=True)
+
+    # Display columns (no raw key)
+    display_df = mkt[[
+        "display_name", "coin", "timeframe", "pnl", "trade_count",
+        "first_trade_dt", "last_trade_dt", "slug",
+    ]].rename(columns={
         "display_name": "Market",
         "coin": "Coin",
         "timeframe": "TF",
@@ -366,49 +418,47 @@ if not market_pnl.empty:
         "trade_count": "Trades",
         "first_trade_dt": "First Trade",
         "last_trade_dt": "Last Trade",
-    }
-    display_df = market_pnl[list(display_cols.keys())].rename(columns=display_cols).copy()
+        "slug": "Link",
+    }).copy()
     display_df["P&L"] = display_df["P&L"].apply(_fmt_usd)
 
-    # Sort options
-    sort_col = st.selectbox(
-        "Sort by",
-        options=["P&L", "Market", "Coin", "TF", "Trades", "First Trade", "Last Trade"],
-        index=0,
-        key="market_sort",
+    # Build Polymarket event URLs from slugs (skip synthetic slugs)
+    display_df["Link"] = display_df["Link"].apply(
+        lambda s: f"https://polymarket.com/event/{s}"
+        if s and s != "" and not s.startswith("__")
+        else ""
     )
 
-    st.dataframe(
+    # Clickable table — click a row to drill down
+    st.caption("👆 Click any row above to see its individual trades below")
+    event = st.dataframe(
         display_df,
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
+        selection_mode="single-row",
+        on_select="rerun",
+        key="market_detail_table",
+        column_config={
+            "Link": st.column_config.LinkColumn("Link", display_text="🔗"),
+        },
     )
 
     # ─────────────────────────────────────────────────────────
-    # Drill-down: select a market to see trades
+    # Drill-down: show trades for the selected market
     # ─────────────────────────────────────────────────────────
 
     st.subheader("Drill-Down: Market Trades")
-    market_options = market_pnl["display_name"].tolist()
-    selected_market = st.selectbox(
-        "Select a market",
-        options=market_options,
-        index=0,
-    )
 
-    if selected_market:
-        # Find the corresponding slug and/or title
-        market_row = market_pnl[market_pnl["display_name"] == selected_market].iloc[0]
-        market_slug = market_row.get("slug", "")
-        market_title = market_row.get("title", "")
+    selected_rows = event.selection.get("rows", []) if event.selection else []
 
-        # Get all trades for this market
-        if market_slug and market_slug in filtered["slug"].values:
-            market_trades = filtered[filtered["slug"] == market_slug].copy()
-        elif market_title and market_title in filtered["title"].values:
-            market_trades = filtered[filtered["title"] == market_title].copy()
-        else:
-            market_trades = pd.DataFrame()
+    if selected_rows:
+        selected_idx = selected_rows[0]
+        row = mkt.iloc[selected_idx]
+        raw_key = row["_raw_key"]
+        display_label = row.get("display_name", row.get("title", ""))
+        market_slug = row.get("slug", "")
+
+        market_trades = filtered[filtered[raw_key_col] == raw_key].copy()
 
         if not market_trades.empty:
             market_trades = market_trades.sort_values("timestamp", ascending=True)
@@ -426,9 +476,8 @@ if not market_pnl.empty:
             trade_display["Price"] = trade_display["price"].apply(lambda p: f"${p:.4f}" if p > 0 else "")
             trade_display["USDC"] = trade_display["usdcSize"].apply(lambda u: f"${u:,.2f}" if u > 0 else "")
 
-            # Transaction hash as link
             trade_display["Tx"] = trade_display["transactionHash"].apply(
-                lambda h: f"https://polymarket.com/tx/{h}" if h else ""
+                lambda h: f"https://polygonscan.com/tx/{h}" if h else ""
             )
 
             trade_display = trade_display.rename(columns={
@@ -440,7 +489,7 @@ if not market_pnl.empty:
 
             st.dataframe(
                 trade_display[["Time", "Type", "Side", "Outcome", "Price", "Shares", "USDC", "P&L", "Tx"]],
-                use_container_width=True,
+                width="stretch",
                 hide_index=True,
                 column_config={
                     "Tx": st.column_config.LinkColumn("Tx", display_text="🔗"),
@@ -450,13 +499,21 @@ if not market_pnl.empty:
             # Market P&L summary
             market_pnl_total = market_trades["signed_usdc"].sum()
             market_trade_count = len(market_trades)
+
+            # Polymarket event link (skip for platform transactions / synthetic slugs)
+            if market_slug and not market_slug.startswith("__"):
+                event_url = f"https://polymarket.com/event/{market_slug}"
+                st.markdown(f"[🔗 View on Polymarket]({event_url})")
+
             st.metric(
-                f"Market P&L: {selected_market}",
+                f"Market P&L: {display_label}",
                 _fmt_usd(market_pnl_total),
                 delta=f"{market_trade_count} trades",
             )
         else:
             st.info("No trade details available for this market.")
+    else:
+        st.info("Click a row in the Market Details table above to see individual trades.")
 
 # ─────────────────────────────────────────────────────────────
 # Export

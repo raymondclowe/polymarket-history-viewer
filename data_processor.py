@@ -35,20 +35,35 @@ def _extract_coin_from_title(title: str) -> str:
 
 
 def _extract_coin_from_slug(slug: str) -> str:
-    """Parse coin ticker from slug like 'btc-updown-15m-1775001900'."""
+    """Parse coin ticker from slug like 'btc-updown-15m-1775001900' or 'bitcoin-up-or-down-june-18-2026-5pm-et'."""
     parts = slug.split("-")
     if parts:
         coin = parts[0].upper()
+        # Standard abbreviations
         if coin in ("BTC", "ETH", "XRP", "SOL", "BCH", "LTC", "DOGE"):
             return coin
+        # Full-name slugs from hourly markets
+        full_to_ticker = {
+            "BITCOIN": "BTC",
+            "ETHEREUM": "ETH",
+            "XRP": "XRP",
+            "SOLANA": "SOL",
+            "LITECOIN": "LTC",
+            "DOGECOIN": "DOGE",
+        }
+        if coin in full_to_ticker:
+            return full_to_ticker[coin]
     return "OTHER"
 
 
 def _extract_timeframe_from_slug(slug: str) -> str:
-    """Parse timeframe from slug like 'btc-updown-15m-1775001900'."""
+    """Parse timeframe from slug like 'btc-updown-15m-1775001900' or 'bitcoin-up-or-down-june-18-2026-5pm-et'."""
     m = re.search(r"-(\d+[mhd])-", slug)
     if m:
         return m.group(1)
+    # Hourly markets: bitcoin-up-or-down-june-18-2026-5pm-et
+    if re.search(r"-(january|february|march|april|may|june|july|august|september|october|november|december)-\d+", slug, re.IGNORECASE):
+        return "1h"
     return "N/A"
 
 
@@ -116,7 +131,14 @@ def api_rows_to_dataframe(rows: list[dict[str, Any]]) -> pd.DataFrame:
         outcome = str(row.get("outcome", ""))
 
         # Derive signed USDC amount
-        if act_type == "TRADE" and side == "BUY":
+        # Balance movements (deposits, withdrawals, transfers) are not P&L — zero them.
+        # MERGE is P&L income (give token pair, get $1 back).
+        # SPLIT spends $1 to create tokens (money out, like BUY).
+        if act_type in ("DEPOSIT", "WITHDRAWAL", "WITHDRAW", "TRANSFER"):
+            signed_usdc = 0.0
+        elif act_type == "SPLIT":
+            signed_usdc = -usdc_size
+        elif act_type == "TRADE" and side == "BUY":
             signed_usdc = -usdc_size
         else:
             signed_usdc = usdc_size
@@ -177,6 +199,10 @@ def normalize_csv_dataframe(df: pd.DataFrame) -> pd.DataFrame:
             "REDEEM": None,
             "MERGE": None,
             "SPLIT": None,
+            "DEPOSIT": None,
+            "WITHDRAWAL": None,
+            "WITHDRAW": None,
+            "TRANSFER": None,
             "MAKER REBATE": None,
             "TAKER REBATE": None,
             "REWARD": None,
@@ -246,14 +272,6 @@ def _add_derived_columns(df: pd.DataFrame) -> pd.DataFrame:
     else:
         df["coin"] = "OTHER"
 
-    # Override with CSV coin column if present and slug didn't produce a good result
-    if "coin" in df.columns and has_slug:
-        # coin column was already set from slug above; check if CSV had its own coin
-        pass  # CSV coin column was renamed or merged
-
-    # Check for existing raw coin column from CSV (not the one we just set)
-    # No need — we set coin above from slug/title which is the canonical source
-
     # Timeframe: from slug first, then title fallback
     if has_slug:
         df["timeframe"] = df["slug"].apply(
@@ -265,6 +283,31 @@ def _add_derived_columns(df: pd.DataFrame) -> pd.DataFrame:
         )
     else:
         df["timeframe"] = "N/A"
+
+    # Zero out signed_usdc for non-P&L event types (balance movements only).
+    # These have no market relevance and must not contribute to P&L.
+    _non_pnl_types = {"DEPOSIT", "WITHDRAWAL", "WITHDRAW", "TRANSFER"}
+    if "signed_usdc" in df.columns:
+        pnl_exclude_mask = df["type"].str.strip().str.upper().isin(_non_pnl_types)
+        if pnl_exclude_mask.any():
+            df.loc[pnl_exclude_mask, "signed_usdc"] = 0.0
+
+    # Tag platform-level transactions (rebates, rewards, deposits, withdrawals) that have no market.
+    # Do this AFTER coin/timeframe extraction so we override only these rows.
+    non_trading_types = {"MAKER_REBATE", "TAKER_REBATE", "REWARD", "MAKER REBATE", "TAKER REBATE",
+                         "DEPOSIT", "WITHDRAWAL", "WITHDRAW", "TRANSFER"}
+    is_platform = df["type"].str.strip().str.upper().isin(non_trading_types)
+    has_no_slug = df["slug"].isna() | (df["slug"].astype(str).str.strip() == "")
+    platform_mask = is_platform & has_no_slug
+
+    if platform_mask.any():
+        df.loc[platform_mask, "slug"] = "__platform_credits__"
+        df.loc[platform_mask, "coin"] = "Platform"
+        df.loc[platform_mask, "timeframe"] = "N/A"
+        if "side" in df.columns:
+            df.loc[platform_mask, "side"] = "CREDIT"
+        if "outcome" in df.columns:
+            df.loc[platform_mask, "outcome"] = df.loc[platform_mask, "type"]
 
     # Datetime from timestamp
     if "timestamp" in df.columns:
@@ -282,6 +325,9 @@ def normalize_market_name(title_or_slug: str) -> str:
     """Produce a human-readable market identifier."""
     if not title_or_slug:
         return "(unknown)"
+    # Synthetic slug for platform credits (rebates, rewards)
+    if title_or_slug == "__platform_credits__":
+        return "Platform Credits (rebates, rewards)"
     # If it looks like a slug (no spaces, has dashes), prettify
     if " " not in title_or_slug and "-" in title_or_slug:
         parts = title_or_slug.split("-")
@@ -299,7 +345,10 @@ def normalize_market_name(title_or_slug: str) -> str:
             except (ValueError, OSError):
                 ts_str = ts_part
             return f"{coin} {timeframe} {ts_str}"
-        return f"{coin} {timeframe}"
+        if timeframe:
+            return f"{coin} {timeframe}"
+        # No recognizable timeframe/timestamp — show the full slug as title
+        return title_or_slug.replace("-", " ").title()
     return str(title_or_slug)
 
 
