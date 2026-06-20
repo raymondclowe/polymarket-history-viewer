@@ -1,0 +1,10 @@
+name = "polymarket-history"
+main = "src/index.js"
+compatibility_date = "2025-06-20"
+
+[vars]
+POLYMARKET_API = "https://data-api.polymarket.com/activity"
+
+[[kv_namespaces]]
+binding = "CACHE"
+id = "placeholder"  # run `wrangler kv:namespace create CACHE` and paste the ID here
