@@ -480,6 +480,7 @@ tr.selected { background: #1e3a5f; }
 .drill-down { margin-top: 12px; }
 .drill-down h3 { font-size: 0.95rem; margin-bottom: 8px; color: #cbd5e1; }
 .drill-down .close-btn { float: right; background: none; border: none; color: #94a3b8; cursor: pointer; font-size: 1.1rem; }
+td a:hover { text-decoration: underline !important; }
 
 @media (max-width: 768px) { .chart-row { grid-template-columns: 1fr; } .summary-grid { grid-template-columns: repeat(2, 1fr); } }
 </style>
@@ -723,7 +724,7 @@ function renderMarketTable() {
   const tbody = document.querySelector("#marketTable tbody");
   tbody.innerHTML = mkts.map((m, i) => \`
     <tr class="\${m.key === selectedMarketKey ? "selected" : ""}" data-key="\${m.key.replace(/"/g,"&quot;")}" data-idx="\${i}">
-      <td>\${escHtml(m.display_name)}</td>
+      <td>\${m.slug ? \`<a href="https://polymarket.com/event/\${escHtml(m.slug)}" target="_blank" style="color:#3b82f6;text-decoration:none;">\${escHtml(m.display_name)}</a>\` : escHtml(m.display_name)}</td>
       <td>\${m.coin}</td>
       <td>\${m.timeframe}</td>
       <td class="\${pnlClass(m.pnl)}">\${fmt(m.pnl)}</td>
@@ -755,7 +756,7 @@ function drillDown(key) {
   d.style.display = "block";
   d.innerHTML = \`
     <button class="close-btn" onclick="closeDrillDown()">✕</button>
-    <h3>\${escHtml(trades[0].title || key)} &nbsp; <span class="\${pnlClass(pnl)}">\${fmt(pnl)}</span> — \${trades.length} trades</h3>
+    <h3>\${trades[0].slug ? \`<a href="https://polymarket.com/event/\${escHtml(trades[0].slug)}" target="_blank" style="color:#e2e8f0;text-decoration:none;">\${escHtml(trades[0].title || key)}</a>\` : escHtml(trades[0].title || key)} &nbsp; <span class=\"\${pnlClass(pnl)}\">\${fmt(pnl)}</span> — \${trades.length} trades</h3>
     <div style="max-height:400px;overflow-y:auto;margin-top:8px;">
       <table>
         <thead><tr><th>Time</th><th>Type</th><th>Side</th><th>Outcome</th><th>Price</th><th>Shares</th><th>USDC</th><th>P&amp;L</th><th>Tx</th></tr></thead>
