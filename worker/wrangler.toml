@@ -2,25 +2,8 @@ name = "polymarket-history"
 main = "src/index.js"
 compatibility_date = "2025-06-20"
 
-# Smart Placement: run near Polymarket API servers (not user) for faster fetches
+# Smart Placement: run near Polymarket API servers for faster fetches
 placement = { mode = "smart" }
 
 [vars]
 POLYMARKET_API = "https://data-api.polymarket.com/activity"
-
-# D1 Database — persistent trade storage
-# Create: npx wrangler d1 create polymarket-history-db
-# Then paste the database_id below
-[[d1_databases]]
-binding = "DB"
-database_name = "polymarket-history-db"
-database_id = "b39e947c-87fd-404f-9423-22844b75cad5"
-
-# Workers AI — Llama 3.2 3B for trading commentary
-# Requires: a Cloudflare account with Workers AI enabled (free tier)
-[ai]
-binding = "AI"
-
-# Cron: daily refresh of known wallets at 6am UTC
-[triggers]
-crons = ["0 6 * * *"]

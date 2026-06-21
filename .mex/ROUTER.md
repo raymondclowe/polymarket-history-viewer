@@ -14,7 +14,7 @@ edges:
     condition: when setting up the dev environment or running the project for the first time
   - target: patterns/INDEX.md
     condition: when starting a task — check the pattern index for a matching pattern file
-last_updated: 2026-06-21  # D1 persistent storage, Workers AI, cron, time-series chart, multi-module refactor
+last_updated: 2026-06-21  # In-memory only (no D1), sortable table, type/search/date filters, fast load last 7 days
 ---
 
 # Session Bootstrap
@@ -27,48 +27,44 @@ Then read this file fully before doing anything else in this session.
 
 **Two versions exist:**
 1. **Streamlit app** (`app.py` + `data_loader.py` + `data_processor.py`) — full-featured Python dashboard on port 8501
-2. **Cloudflare Worker** (`worker/`) — standalone SPA with interactive charts (Chart.js), deployed to Cloudflare Workers
+2. **Cloudflare Worker** (`worker/`) — standalone SPA with interactive charts (Chart.js), deployed to Cloudflare Workers. In-memory only — no persistent storage.
 
-**Worker architecture (multi-module):**
-- `worker/src/index.js` — Main handler: routing, D1 operations, Polymarket API fetch, cron scheduler
+**Worker architecture (2 modules):**
+- `worker/src/index.js` — Main handler: routing, Polymarket API fetch with date-window pagination
 - `worker/src/data.js` — Pure P&L computation functions (shared server & client-side)
-- `worker/src/ai.js` — Workers AI commentary using @cf/meta/llama-3.2-3b-instruct
 - `worker/src/html.js` — Full SPA dashboard HTML/CSS/JS as template string
-- `worker/schema.sql` — D1 database schema (trades, wallets, daily_pnl tables)
-- `worker/wrangler.toml` — Config with D1 binding (`DB`), AI binding, Smart Placement, daily cron
+- `worker/wrangler.toml` — Config with Smart Placement only (no D1, no AI, no cron)
 
-**Key infrastructure:**
-- **D1 persistent storage** — trades cached in SQLite, UNIQUE(wallet+tx_hash) for idempotent re-fetches
-- **Workers AI** — per-market and overall trading commentary, ~$0.001/call
-- **Cron trigger** — daily refresh of known wallets at 6am UTC
-- **Smart Placement** — worker runs near Polymarket API servers for faster data fetches
-- **Date-window pagination** — bypasses 4000-offset API ceiling via start/end Unix timestamps
-- **3-column chart layout** — P&L by coin (bar), P&L by timeframe (bar), P&L Over Time with cumulative line
+**Key features:**
+- **In-memory only** — no D1, no persistent storage. Every load fetches fresh from API.
+- **Fast initial load** — defaults to last 7 days (1-2 sec). "Load Full History" fetches all-time.
+- **Sortable market table** — click any column header to sort ascending/descending.
+- **Rich filters** — coin, timeframe, type, market search, date range inputs.
+- **Smart Placement** — worker runs near Polymarket API servers for faster data fetches.
+- **Date-window pagination** — bypasses 4000-offset API ceiling via start/end Unix timestamps.
+- **3-column chart layout** — P&L by coin (bar), P&L by timeframe (bar), P&L Over Time with cumulative line.
 
 **Worker routes:**
 - `GET /` — HTML dashboard (Chart.js SPA)
-- `GET /api/data?wallet=0x...&force=1` — JSON P&L data (from D1 or API)
-- `GET /api/timeseries?wallet=0x...` — Daily P&L from D1
-- `GET /api/ai/market?wallet=0x...&slug=...` — AI market commentary
-- `GET /api/ai/summary?wallet=0x...&days=...` — AI overall summary
+- `GET /api/data?wallet=0x...&days=7` — JSON P&L data from API (days= for partial fetch)
 
 **Not yet built:**
 - Multi-wallet comparison mode
 - CSV import in Worker version
 - Automated tests
-- Wallet pagination in cron (currently limited to 10 stale wallets)
 
 **Known issues:**
 - Timeframe extraction from title strings is heuristic and may misclassify
+- First fetch of full history can take 30-60s (20k+ rows across 7-day windows)
 - No pagination in market detail table (all rows rendered in memory)
-- First fetch from API can take 30-60s (20k rows across 7-day windows)
-- AI commentary only available after D1 populates (first fetch must complete)
 
 **Recently fixed:**
-- **D1 SQLITE_ERROR fix** — Changed batch INSERT from multi-VALUES (exceeded 999 var limit) to individual prepared statements via db.batch() (50 stmts/call)
-- **D1 + AI + Cron infrastructure** — Complete rewrite: multi-module architecture, D1 persistent storage, Workers AI commentary, Smart Placement, daily cron refresh
-- **Polymarket.com links** — Market names link to polymarket.com/event/{slug} in table and drill-down headers
-- **20k+ rows fetched** — Date-window pagination working, all P&L computed correctly
+- **D1 corruption removed** — Switched to pure in-memory API fetch. P&L now correctly shows ~$1,291 loss instead of bogus +$2k profit.
+- **AI commentary stripped** — removed until core features are stable.
+- **Sortable market table** — click any column header to sort (toggle asc/desc).
+- **Rich filters added** — type filter, market search text input, date range pickers.
+- **Fast load** — defaults to last 7 days for near-instant initial load.
+- **Filter dropdown reset bug fixed** — renderCharts now preserves selected coin/timeframe values.
 
 ## Routing Table
 

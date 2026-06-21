@@ -44,7 +44,10 @@ h1 { font-size: 1.5rem; margin-bottom: 4px; color: #f1f5f9; }
 .filter-row select { padding: 8px 12px; border-radius: 6px; border: 1px solid #475569; background: #0f172a; color: #e2e8f0; font-size: 0.85rem; min-width: 140px; }
 
 table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
-th { text-align: left; padding: 10px 12px; color: #64748b; font-weight: 600; font-size: 0.75rem; text-transform: uppercase; border-bottom: 1px solid #334155; }
+th { text-align: left; padding: 10px 12px; color: #64748b; font-weight: 600; font-size: 0.75rem; text-transform: uppercase; border-bottom: 1px solid #334155; cursor: pointer; user-select: none; }
+th:hover { color: #94a3b8; }
+th .sort-arrow { display: inline-block; margin-left: 4px; font-size: 0.7rem; color: #64748b; }
+th .sort-arrow.active { color: #3b82f6; }
 td { padding: 8px 12px; border-bottom: 1px solid #1e293b; }
 tr:hover { background: #1e293b; cursor: pointer; }
 tr.selected { background: #1e3a5f; }
@@ -55,12 +58,8 @@ tr.selected { background: #1e3a5f; }
 .chart-wrap { position: relative; height: 300px; }
 .chart-wrap canvas { width: 100% !important; }
 
-.ai-comment { padding: 12px 16px; background: #0f172a; border-radius: 8px; border-left: 3px solid #3b82f6; margin: 8px 0; font-size: 0.85rem; line-height: 1.5; color: #cbd5e1; }
-.ai-comment .ai-label { font-size: 0.7rem; color: #3b82f6; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
-.ai-comment.loading { opacity: 0.5; }
-.ai-badge { display: inline-block; background: #1e3a5f; color: #60a5fa; font-size: 0.65rem; padding: 2px 8px; border-radius: 4px; margin-left: 6px; cursor: pointer; }
-.ai-badge:hover { background: #1e40af; }
-.ai-badge.spinning { opacity: 0.5; pointer-events: none; }
+.filter-input { padding: 8px 12px; border-radius: 6px; border: 1px solid #475569; background: #0f172a; color: #e2e8f0; font-size: 0.85rem; min-width: 140px; }
+.filter-input::placeholder { color: #64748b; }
 
 .loader { text-align: center; padding: 40px; color: #64748b; }
 .spinner { display: inline-block; width: 32px; height: 32px; border: 3px solid #334155; border-top-color: #3b82f6; border-radius: 50%; animation: spin 0.8s linear infinite; }
@@ -79,7 +78,7 @@ td a:hover { text-decoration: underline !important; }
 <body>
 <div class="container">
   <h1>📊 Polymarket History Viewer</h1>
-  <p class="subtitle">P&L dashboard with AI-powered trading analysis</p>
+  <p class="subtitle">P&L dashboard — live from Polymarket API</p>
 
   <div class="card">
     <div class="input-row">
@@ -97,13 +96,7 @@ td a:hover { text-decoration: underline !important; }
     <!-- Summary Cards -->
     <div class="summary-grid" id="summaryCards"></div>
 
-    <!-- AI Overall Summary -->
-    <div class="card" id="aiSummaryCard" style="display:none;">
-      <h2>🤖 AI Trading Analysis <span style="font-weight:400;color:#64748b;font-size:0.8rem;">— what the data says</span></h2>
-      <div id="aiSummaryContent" class="ai-comment"><span class="ai-label">AI</span> Loading analysis...</div>
-    </div>
-
-    <!-- Time Presets -->
+    <!-- Time Presets & Filters -->
     <div class="card" style="margin-top:16px;">
       <div class="btn-group" id="timePresets">
         <button class="btn btn-outline btn-sm active" data-days="0">All Time</button>
@@ -120,6 +113,28 @@ td a:hover { text-decoration: underline !important; }
           <label>Timeframe</label>
           <select id="tfFilter"><option value="ALL">All Timeframes</option></select>
         </div>
+        <div>
+          <label>Type</label>
+          <select id="typeFilter">
+            <option value="ALL">All Types</option>
+            <option value="TRADE">Trade</option>
+            <option value="REDEEM">Redeem</option>
+            <option value="MERGE">Merge</option>
+            <option value="SPLIT">Split</option>
+          </select>
+        </div>
+        <div>
+          <label>Market Search</label>
+          <input type="text" id="marketSearch" class="filter-input" placeholder="Search markets...">
+        </div>
+        <div>
+          <label>From</label>
+          <input type="date" id="dateFrom" class="filter-input">
+        </div>
+        <div>
+          <label>To</label>
+          <input type="date" id="dateTo" class="filter-input">
+        </div>
       </div>
     </div>
 
@@ -135,7 +150,16 @@ td a:hover { text-decoration: underline !important; }
       <h2>Market Details <span style="font-weight:400;color:#64748b;font-size:0.8rem;">— click a row to drill down</span></h2>
       <div style="max-height:500px;overflow-y:auto;">
         <table id="marketTable">
-          <thead><tr><th>Market</th><th>Coin</th><th>TF</th><th>P&L</th><th>Trades</th><th>First Trade</th><th>Last Trade</th><th>AI</th></tr></thead>
+          <thead><tr>
+            <th data-sort="display_name">Market <span class="sort-arrow">▾</span></th>
+            <th data-sort="coin">Coin <span class="sort-arrow">▾</span></th>
+            <th data-sort="timeframe">TF <span class="sort-arrow">▾</span></th>
+            <th data-sort="pnl">P&amp;L <span class="sort-arrow">▾</span></th>
+            <th data-sort="trade_count">Trades <span class="sort-arrow">▾</span></th>
+            <th data-sort="win_rate">Win Rate <span class="sort-arrow">▾</span></th>
+            <th data-sort="first_trade">First Trade <span class="sort-arrow">▾</span></th>
+            <th data-sort="last_trade">Last Trade <span class="sort-arrow">▾</span></th>
+          </tr></thead>
           <tbody></tbody>
         </table>
       </div>
@@ -153,112 +177,70 @@ td a:hover { text-decoration: underline !important; }
 
 let allData = null;
 let filteredRows = [];
-let currentDays = 0;
+let currentDays = 7;
 let currentCoin = "ALL";
 let currentTf = "ALL";
+let currentType = "ALL";
+let currentSearch = "";
+let dateFrom = "";
+let dateTo = "";
 let coinChart = null;
 let tfChart = null;
 let dailyChart = null;
 let selectedMarketKey = null;
-let aiCommentaries = {};
+let loadDays = 7;
+let sortColumn = "pnl";
+let sortDirection = "desc";
 
 // ──────────────────────────────────────────────────────────────
 // API call
 // ──────────────────────────────────────────────────────────────
 
-async function loadData(force) {
+async function loadData(days) {
   const wallet = document.getElementById("walletInput").value.trim();
   if (!wallet || wallet.length < 10) {
     showStatus("Enter a valid wallet address", "error");
     return;
   }
 
-  showStatus('<span class="spinner"></span> Loading data...', "loader");
+  const isFullHistory = days === 0;
+  loadDays = days;
+  showStatus('<span class="spinner"></span> Loading ' + (isFullHistory ? "full history..." : "last " + days + " days..."), "loader");
   document.getElementById("dashboard").style.display = "none";
 
   try {
-    const resp = await fetch(\`/api/data?wallet=\${encodeURIComponent(wallet)}\${force ? "&force=1" : ""}\`);
+    const url = \`/api/data?wallet=\${encodeURIComponent(wallet)}\${days > 0 ? "&days=" + days : ""}\`;
+    const resp = await fetch(url);
     const data = await resp.json();
     if (data.error) { showStatus(data.error, "error"); return; }
 
     allData = data;
-    filteredRows = data.rows;
-    currentDays = 0;
-    currentCoin = "ALL";
-    currentTf = "ALL";
-    aiCommentaries = {};
-    document.getElementById("coinFilter").value = "ALL";
-    document.getElementById("tfFilter").value = "ALL";
-    updateTimePresetButtons(0);
+    resetFilters();
     renderAll();
     document.getElementById("dashboard").style.display = "block";
     showStatus("", "");
-
-    // Load AI summary in background
-    loadAiSummary(wallet, 0);
   } catch (e) {
     showStatus("Failed to load: " + e.message, "error");
   }
 }
 
-// ──────────────────────────────────────────────────────────────
-// AI commentary
-// ──────────────────────────────────────────────────────────────
-
-async function loadAiSummary(wallet, days) {
-  const card = document.getElementById("aiSummaryCard");
-  const content = document.getElementById("aiSummaryContent");
-  try {
-    card.style.display = "block";
-    content.innerHTML = '<span class="ai-label">AI</span> Loading analysis...';
-    content.classList.add("loading");
-    const resp = await fetch(\`/api/ai/summary?wallet=\${encodeURIComponent(wallet)}\${days > 0 ? "&days=" + days : ""}\`);
-    const data = await resp.json();
-    if (data.summary) {
-      content.innerHTML = \`<span class="ai-label">AI</span> \${escHtml(data.summary)}\`;
-    } else if (data.error) {
-      content.innerHTML = \`<span class="ai-label">AI</span> <span style="color:#94a3b8;">\${escHtml(data.error)}</span>\`;
-    }
-    content.classList.remove("loading");
-  } catch (e) {
-    content.innerHTML = \`<span class="ai-label">AI</span> <span style="color:#94a3b8;">Analysis unavailable</span>\`;
-    content.classList.remove("loading");
-  }
-}
-
-async function loadMarketCommentary(wallet, slug, badgeEl) {
-  if (aiCommentaries[slug]) {
-    showMarketCommentary(slug);
-    return;
-  }
-  if (badgeEl) {
-    badgeEl.classList.add("spinning");
-    badgeEl.textContent = "AI…";
-  }
-  try {
-    const resp = await fetch(\`/api/ai/market?wallet=\${encodeURIComponent(wallet)}&slug=\${encodeURIComponent(slug)}\`);
-    const data = await resp.json();
-    aiCommentaries[slug] = data.summary || "Commentary unavailable.";
-  } catch (e) {
-    aiCommentaries[slug] = "Failed to load commentary.";
-  }
-  if (badgeEl) badgeEl.classList.remove("spinning");
-  showMarketCommentary(slug);
-}
-
-function showMarketCommentary(slug) {
-  const d = document.getElementById("drillDown");
-  const existing = d.querySelector(\`.ai-market-comment[data-slug="\${escHtml(slug)}"]\`);
-  if (existing) {
-    existing.remove();
-    return;
-  }
-  const div = document.createElement("div");
-  div.className = "ai-comment ai-market-comment";
-  div.dataset.slug = slug;
-  div.innerHTML = \`<span class="ai-label">AI Analysis</span> \${escHtml(aiCommentaries[slug] || "Loading...")}\`;
-  const tableWrap = d.querySelector("div[style]");
-  if (tableWrap) tableWrap.after(div);
+function resetFilters() {
+  currentDays = 7;
+  currentCoin = "ALL";
+  currentTf = "ALL";
+  currentType = "ALL";
+  currentSearch = "";
+  dateFrom = "";
+  dateTo = "";
+  sortColumn = "pnl";
+  sortDirection = "desc";
+  selectedMarketKey = null;
+  document.getElementById("coinFilter").value = "ALL";
+  document.getElementById("tfFilter").value = "ALL";
+  document.getElementById("typeFilter").value = "ALL";
+  document.getElementById("marketSearch").value = "";
+  document.getElementById("dateFrom").value = "";
+  document.getElementById("dateTo").value = "";
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -266,6 +248,7 @@ function showMarketCommentary(slug) {
 // ──────────────────────────────────────────────────────────────
 
 function applyFilters() {
+  if (!allData) { filteredRows = []; return; }
   let rows = allData.rows;
   const now = Math.floor(Date.now() / 1000);
   if (currentDays > 0) {
@@ -274,7 +257,54 @@ function applyFilters() {
   }
   if (currentCoin !== "ALL") rows = rows.filter(r => r.coin === currentCoin);
   if (currentTf !== "ALL") rows = rows.filter(r => r.timeframe === currentTf);
+  if (currentType !== "ALL") rows = rows.filter(r => r.type === currentType);
+  if (currentSearch) {
+    const q = currentSearch.toLowerCase();
+    rows = rows.filter(r => (r.slug || "").toLowerCase().includes(q) || (r.title || "").toLowerCase().includes(q));
+  }
+  if (dateFrom) {
+    const fromTs = Math.floor(new Date(dateFrom + "T00:00:00Z").getTime() / 1000);
+    rows = rows.filter(r => r.timestamp >= fromTs);
+  }
+  if (dateTo) {
+    const toTs = Math.floor(new Date(dateTo + "T23:59:59Z").getTime() / 1000);
+    rows = rows.filter(r => r.timestamp <= toTs);
+  }
   filteredRows = rows;
+}
+
+// ──────────────────────────────────────────────────────────────
+// Sorting
+// ──────────────────────────────────────────────────────────────
+
+function sortMarkets(mkts) {
+  const sorted = [...mkts];
+  sorted.sort((a, b) => {
+    let va = a[sortColumn];
+    let vb = b[sortColumn];
+    if (typeof va === "string") { va = va.toLowerCase(); vb = (vb || "").toLowerCase(); }
+    if (va == null) va = "";
+    if (vb == null) vb = "";
+    if (va < vb) return sortDirection === "asc" ? -1 : 1;
+    if (va > vb) return sortDirection === "asc" ? 1 : -1;
+    return 0;
+  });
+  return sorted;
+}
+
+function updateSortArrows() {
+  document.querySelectorAll("#marketTable th[data-sort]").forEach(th => {
+    const arrow = th.querySelector(".sort-arrow");
+    if (!arrow) return;
+    const key = th.dataset.sort;
+    if (key === sortColumn) {
+      arrow.textContent = sortDirection === "asc" ? "▴" : "▾";
+      arrow.style.color = "#3b82f6";
+    } else {
+      arrow.textContent = "▾";
+      arrow.style.color = "#64748b";
+    }
+  });
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -296,8 +326,13 @@ function renderBanner() {
   const range = ts.length > 0
     ? \`\${new Date(Math.min(...ts)*1000).toISOString().slice(0,10)} → \${new Date(Math.max(...ts)*1000).toISOString().slice(0,10)}\`
     : "";
-  const source = allData.source === "d1" ? " · 📦 from persistent storage" : "";
-  b.textContent = \`📅 Data range: \${range} (\${filteredRows.length.toLocaleString()} rows)\${source}\`;
+  const partial = loadDays > 0 && allData && allData.rows.length < 21000
+    ? \` · <a href="#" id="loadAllLink" style="color:#3b82f6;">Load Full History</a>\`
+    : "";
+  b.innerHTML = \`📅 Data range: \${range} (\${filteredRows.length.toLocaleString()} of \${allData ? allData.rows.length.toLocaleString() : "?"} rows)\${partial}\`;
+
+  const link = document.getElementById("loadAllLink");
+  if (link) link.addEventListener("click", (e) => { e.preventDefault(); loadData(0); });
 }
 
 function renderSummary() {
@@ -354,19 +389,27 @@ function renderCharts() {
     },
   });
 
+  // Rebuild filter dropdowns preserving selections
+  const savedCoin = currentCoin;
+  const savedTf = currentTf;
   const allCoins = [...new Set(allData.rows.map(r => r.coin).filter(c => c !== "OTHER"))].sort();
   const allTfs = [...new Set(allData.rows.map(r => r.timeframe).filter(t => t !== "N/A"))].sort();
   document.getElementById("coinFilter").innerHTML = '<option value="ALL">All Coins</option>' + allCoins.map(c => \`<option value="\${c}">\${c}</option>\`).join("");
   document.getElementById("tfFilter").innerHTML = '<option value="ALL">All Timeframes</option>' + allTfs.map(t => \`<option value="\${t}">\${t}</option>\`).join("");
+  document.getElementById("coinFilter").value = savedCoin;
+  document.getElementById("tfFilter").value = savedTf;
 }
 
 function renderMarketTable() {
-  const mkts = computePerMarketPnlJs(filteredRows);
+  let mkts = computePerMarketPnlJs(filteredRows);
+  mkts = sortMarkets(mkts);
+  updateSortArrows();
+
   const fmt = (v) => (v >= 0 ? "+" : "") + "$" + v.toFixed(2);
   const pnlClass = (v) => v >= 0 ? "pnl-pos" : "pnl-neg";
   const tsStr = (ts) => ts > 0 ? new Date(ts * 1000).toISOString().slice(0, 16).replace("T", " ") : "";
   const tbody = document.querySelector("#marketTable tbody");
-  const wallet = document.getElementById("walletInput").value.trim();
+  const wrPct = (v) => (v * 100).toFixed(0) + "%";
 
   tbody.innerHTML = mkts.map((m, i) => \`
     <tr class="\${m.key === selectedMarketKey ? "selected" : ""}" data-key="\${m.key.replace(/"/g,"&quot;")}" data-idx="\${i}">
@@ -375,9 +418,9 @@ function renderMarketTable() {
       <td>\${m.timeframe}</td>
       <td class="\${pnlClass(m.pnl)}">\${fmt(m.pnl)}</td>
       <td>\${m.trade_count}</td>
+      <td>\${wrPct(m.win_rate)}</td>
       <td>\${tsStr(m.first_trade)}</td>
       <td>\${tsStr(m.last_trade)}</td>
-      <td><span class="ai-badge" data-slug="\${escHtml(m.slug || m.key)}" onclick="event.stopPropagation(); loadMarketCommentary('\${wallet}', '\${escHtml(m.slug || m.key)}', this)">🤖 AI</span></td>
     </tr>
   \`).join("");
 
@@ -396,7 +439,6 @@ function drillDown(key) {
   const fmt = (v) => (v >= 0 ? "+" : "") + "$" + v.toFixed(2);
   const pnlClass = (v) => v >= 0 ? "pnl-pos" : "pnl-neg";
   const pnl = trades.reduce((s, r) => s + r.signed_usdc, 0);
-  const wallet = document.getElementById("walletInput").value.trim();
   const slug = trades[0].slug || key;
 
   const d = document.getElementById("drillDown");
@@ -404,7 +446,6 @@ function drillDown(key) {
   d.innerHTML = \`
     <button class="close-btn" onclick="closeDrillDown()">✕</button>
     <h3>\${slug ? \`<a href="https://polymarket.com/event/\${escHtml(slug)}" target="_blank" style="color:#e2e8f0;text-decoration:none;">\${escHtml(trades[0].title || key)}</a>\` : escHtml(trades[0].title || key)} &nbsp; <span class="\${pnlClass(pnl)}">\${fmt(pnl)}</span> — \${trades.length} trades</h3>
-    <div style="margin: 8px 0;"><span class="ai-badge" id="drillAiBtn">🤖 Get AI Analysis</span></div>
     <div style="max-height:400px;overflow-y:auto;margin-top:8px;">
       <table>
         <thead><tr><th>Time</th><th>Type</th><th>Side</th><th>Outcome</th><th>Price</th><th>Shares</th><th>USDC</th><th>P&amp;L</th><th>Tx</th></tr></thead>
@@ -426,12 +467,6 @@ function drillDown(key) {
       </table>
     </div>
   \`;
-
-  document.getElementById("drillAiBtn").addEventListener("click", function() {
-    loadMarketCommentary(wallet, slug, this);
-  });
-
-  if (aiCommentaries[slug]) showMarketCommentary(slug);
 }
 
 function closeDrillDown() {
@@ -516,24 +551,49 @@ function showStatus(msg, type) { document.getElementById("statusArea").innerHTML
 function updateTimePresetButtons(d) { document.querySelectorAll("#timePresets button").forEach(b => b.classList.toggle("active", parseInt(b.dataset.days) === d)); }
 function escHtml(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
 
-document.getElementById("loadBtn").addEventListener("click", () => loadData(false));
-document.getElementById("clearBtn").addEventListener("click", () => loadData(true));
-document.getElementById("walletInput").addEventListener("keydown", (e) => { if (e.key === "Enter") loadData(false); });
+// ── Load / Refresh ──
+
+document.getElementById("loadBtn").addEventListener("click", () => loadData(loadDays));
+document.getElementById("clearBtn").addEventListener("click", () => loadData(loadDays));
+document.getElementById("walletInput").addEventListener("keydown", (e) => { if (e.key === "Enter") loadData(loadDays); });
+
+// ── Time presets (client-side filter) ──
 
 document.getElementById("timePresets").addEventListener("click", (e) => {
   if (e.target.tagName === "BUTTON") {
     currentDays = parseInt(e.target.dataset.days);
     updateTimePresetButtons(currentDays);
     renderAll();
-    const w = document.getElementById("walletInput").value.trim();
-    if (w) loadAiSummary(w, currentDays);
   }
 });
 
+// ── Filters ──
+
 document.getElementById("coinFilter").addEventListener("change", (e) => { currentCoin = e.target.value; renderAll(); });
 document.getElementById("tfFilter").addEventListener("change", (e) => { currentTf = e.target.value; renderAll(); });
+document.getElementById("typeFilter").addEventListener("change", (e) => { currentType = e.target.value; renderAll(); });
+document.getElementById("marketSearch").addEventListener("input", (e) => { currentSearch = e.target.value; renderAll(); });
+document.getElementById("dateFrom").addEventListener("change", (e) => { dateFrom = e.target.value; renderAll(); });
+document.getElementById("dateTo").addEventListener("change", (e) => { dateTo = e.target.value; renderAll(); });
 
-if (document.getElementById("walletInput").value.trim().length > 10) loadData(false);
+// ── Sortable table headers ──
+
+document.querySelectorAll("#marketTable th[data-sort]").forEach(th => {
+  th.addEventListener("click", () => {
+    const key = th.dataset.sort;
+    if (sortColumn === key) {
+      sortDirection = sortDirection === "asc" ? "desc" : "asc";
+    } else {
+      sortColumn = key;
+      sortDirection = "desc";
+    }
+    renderMarketTable();
+  });
+});
+
+// ── Auto-load on page load ──
+
+if (document.getElementById("walletInput").value.trim().length > 10) loadData(7);
 </script>
 </body>
 </html>`;
