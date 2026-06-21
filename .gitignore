@@ -1,0 +1,12 @@
+# Python bytecode cache
+__pycache__/
+*.pyc
+
+# Environment variables (contains secrets)
+.env
+
+# API data cache
+cache/
+
+# Wrangler local dev cache and state
+worker/.wrangler/
