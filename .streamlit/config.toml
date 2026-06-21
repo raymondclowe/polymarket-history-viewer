@@ -1,0 +1,8 @@
+[theme]
+# A clean dark look — nothing like the default
+base="dark"
+primaryColor="#00c9a7"
+backgroundColor="#0f1117"
+secondaryBackgroundColor="#1a1d27"
+textColor="#e4e8ec"
+font="sans serif"
