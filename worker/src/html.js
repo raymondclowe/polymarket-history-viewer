@@ -1,0 +1,539 @@
+/**
+ * html.js — The entire SPA dashboard UI as a template string.
+ * Exported separately so index.js stays focused on routing.
+ */
+
+export const HTML_PAGE = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Polymarket History Viewer</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
+.container { max-width: 1300px; margin: 0 auto; padding: 20px; }
+h1 { font-size: 1.5rem; margin-bottom: 4px; color: #f1f5f9; }
+.subtitle { color: #94a3b8; font-size: 0.85rem; margin-bottom: 20px; }
+.card { background: #1e293b; border-radius: 12px; padding: 20px; margin-bottom: 16px; border: 1px solid #334155; }
+.card h2 { font-size: 1rem; color: #94a3b8; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
+
+.input-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.input-row input { flex: 1; min-width: 300px; padding: 10px 14px; border-radius: 8px; border: 1px solid #475569; background: #0f172a; color: #e2e8f0; font-size: 0.9rem; }
+.input-row input::placeholder { color: #64748b; }
+.btn { padding: 10px 20px; border-radius: 8px; border: none; cursor: pointer; font-weight: 600; font-size: 0.85rem; transition: all 0.2s; }
+.btn-primary { background: #3b82f6; color: #fff; }
+.btn-primary:hover { background: #2563eb; }
+.btn-sm { padding: 6px 14px; font-size: 0.8rem; }
+.btn-outline { background: transparent; border: 1px solid #475569; color: #cbd5e1; }
+.btn-outline:hover { background: #1e293b; border-color: #64748b; }
+.btn-outline.active { background: #3b82f6; border-color: #3b82f6; color: #fff; }
+.btn-group { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 12px; }
+
+.summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+.summary-item { text-align: center; padding: 16px; background: #0f172a; border-radius: 8px; }
+.summary-item .label { font-size: 0.75rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; }
+.summary-item .value { font-size: 1.5rem; font-weight: 700; margin-top: 4px; }
+.value.green { color: #22c55e; }
+.value.red { color: #ef4444; }
+.value.gray { color: #94a3b8; }
+
+.filter-row { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 12px; }
+.filter-row label { font-size: 0.8rem; color: #94a3b8; display: block; margin-bottom: 4px; }
+.filter-row select { padding: 8px 12px; border-radius: 6px; border: 1px solid #475569; background: #0f172a; color: #e2e8f0; font-size: 0.85rem; min-width: 140px; }
+
+table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+th { text-align: left; padding: 10px 12px; color: #64748b; font-weight: 600; font-size: 0.75rem; text-transform: uppercase; border-bottom: 1px solid #334155; }
+td { padding: 8px 12px; border-bottom: 1px solid #1e293b; }
+tr:hover { background: #1e293b; cursor: pointer; }
+tr.selected { background: #1e3a5f; }
+.pnl-pos { color: #22c55e; }
+.pnl-neg { color: #ef4444; }
+
+.chart-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+.chart-wrap { position: relative; height: 300px; }
+.chart-wrap canvas { width: 100% !important; }
+
+.ai-comment { padding: 12px 16px; background: #0f172a; border-radius: 8px; border-left: 3px solid #3b82f6; margin: 8px 0; font-size: 0.85rem; line-height: 1.5; color: #cbd5e1; }
+.ai-comment .ai-label { font-size: 0.7rem; color: #3b82f6; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+.ai-comment.loading { opacity: 0.5; }
+.ai-badge { display: inline-block; background: #1e3a5f; color: #60a5fa; font-size: 0.65rem; padding: 2px 8px; border-radius: 4px; margin-left: 6px; cursor: pointer; }
+.ai-badge:hover { background: #1e40af; }
+.ai-badge.spinning { opacity: 0.5; pointer-events: none; }
+
+.loader { text-align: center; padding: 40px; color: #64748b; }
+.spinner { display: inline-block; width: 32px; height: 32px; border: 3px solid #334155; border-top-color: #3b82f6; border-radius: 50%; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.error { color: #ef4444; padding: 12px; background: #450a0a; border-radius: 8px; margin: 12px 0; }
+.info-banner { padding: 10px 14px; background: #1e293b; border-radius: 8px; color: #94a3b8; font-size: 0.8rem; margin-bottom: 12px; }
+
+.drill-down { margin-top: 12px; }
+.drill-down h3 { font-size: 0.95rem; margin-bottom: 8px; color: #cbd5e1; }
+.drill-down .close-btn { float: right; background: none; border: none; color: #94a3b8; cursor: pointer; font-size: 1.1rem; }
+td a:hover { text-decoration: underline !important; }
+
+@media (max-width: 768px) { .chart-row-3 { grid-template-columns: 1fr; } .summary-grid { grid-template-columns: repeat(2, 1fr); } }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>📊 Polymarket History Viewer</h1>
+  <p class="subtitle">P&L dashboard with AI-powered trading analysis</p>
+
+  <div class="card">
+    <div class="input-row">
+      <input type="text" id="walletInput" placeholder="0x..." value="0xc1c66EedC6Fb6DeA58e5dd9875b04140f8a7C88e">
+      <button class="btn btn-primary" id="loadBtn">🔍 Load</button>
+      <button class="btn btn-outline btn-sm" id="clearBtn">Clear &amp; Refresh</button>
+    </div>
+  </div>
+
+  <div id="statusArea"></div>
+
+  <div id="dashboard" style="display:none;">
+    <div id="banner" class="info-banner"></div>
+
+    <!-- Summary Cards -->
+    <div class="summary-grid" id="summaryCards"></div>
+
+    <!-- AI Overall Summary -->
+    <div class="card" id="aiSummaryCard" style="display:none;">
+      <h2>🤖 AI Trading Analysis <span style="font-weight:400;color:#64748b;font-size:0.8rem;">— what the data says</span></h2>
+      <div id="aiSummaryContent" class="ai-comment"><span class="ai-label">AI</span> Loading analysis...</div>
+    </div>
+
+    <!-- Time Presets -->
+    <div class="card" style="margin-top:16px;">
+      <div class="btn-group" id="timePresets">
+        <button class="btn btn-outline btn-sm active" data-days="0">All Time</button>
+        <button class="btn btn-outline btn-sm" data-days="7">Last 7 Days</button>
+        <button class="btn btn-outline btn-sm" data-days="1">Last 24h</button>
+        <button class="btn btn-outline btn-sm" data-days="30">Last 30 Days</button>
+      </div>
+      <div class="filter-row">
+        <div>
+          <label>Coin</label>
+          <select id="coinFilter"><option value="ALL">All Coins</option></select>
+        </div>
+        <div>
+          <label>Timeframe</label>
+          <select id="tfFilter"><option value="ALL">All Timeframes</option></select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Charts: 3-column -->
+    <div class="chart-row-3">
+      <div class="card"><h2>P&L by Coin</h2><div class="chart-wrap"><canvas id="coinChart"></canvas></div></div>
+      <div class="card"><h2>P&L by Timeframe</h2><div class="chart-wrap"><canvas id="tfChart"></canvas></div></div>
+      <div class="card"><h2>P&L Over Time</h2><div class="chart-wrap"><canvas id="dailyChart"></canvas></div></div>
+    </div>
+
+    <!-- Market Table -->
+    <div class="card">
+      <h2>Market Details <span style="font-weight:400;color:#64748b;font-size:0.8rem;">— click a row to drill down</span></h2>
+      <div style="max-height:500px;overflow-y:auto;">
+        <table id="marketTable">
+          <thead><tr><th>Market</th><th>Coin</th><th>TF</th><th>P&L</th><th>Trades</th><th>First Trade</th><th>Last Trade</th><th>AI</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Drill-down -->
+    <div id="drillDown" class="card drill-down" style="display:none;"></div>
+  </div>
+</div>
+
+<script>
+// ──────────────────────────────────────────────────────────────
+// State
+// ──────────────────────────────────────────────────────────────
+
+let allData = null;
+let filteredRows = [];
+let currentDays = 0;
+let currentCoin = "ALL";
+let currentTf = "ALL";
+let coinChart = null;
+let tfChart = null;
+let dailyChart = null;
+let selectedMarketKey = null;
+let aiCommentaries = {};
+
+// ──────────────────────────────────────────────────────────────
+// API call
+// ──────────────────────────────────────────────────────────────
+
+async function loadData(force) {
+  const wallet = document.getElementById("walletInput").value.trim();
+  if (!wallet || wallet.length < 10) {
+    showStatus("Enter a valid wallet address", "error");
+    return;
+  }
+
+  showStatus('<span class="spinner"></span> Loading data...', "loader");
+  document.getElementById("dashboard").style.display = "none";
+
+  try {
+    const resp = await fetch(\`/api/data?wallet=\${encodeURIComponent(wallet)}\${force ? "&force=1" : ""}\`);
+    const data = await resp.json();
+    if (data.error) { showStatus(data.error, "error"); return; }
+
+    allData = data;
+    filteredRows = data.rows;
+    currentDays = 0;
+    currentCoin = "ALL";
+    currentTf = "ALL";
+    aiCommentaries = {};
+    document.getElementById("coinFilter").value = "ALL";
+    document.getElementById("tfFilter").value = "ALL";
+    updateTimePresetButtons(0);
+    renderAll();
+    document.getElementById("dashboard").style.display = "block";
+    showStatus("", "");
+
+    // Load AI summary in background
+    loadAiSummary(wallet, 0);
+  } catch (e) {
+    showStatus("Failed to load: " + e.message, "error");
+  }
+}
+
+// ──────────────────────────────────────────────────────────────
+// AI commentary
+// ──────────────────────────────────────────────────────────────
+
+async function loadAiSummary(wallet, days) {
+  const card = document.getElementById("aiSummaryCard");
+  const content = document.getElementById("aiSummaryContent");
+  try {
+    card.style.display = "block";
+    content.innerHTML = '<span class="ai-label">AI</span> Loading analysis...';
+    content.classList.add("loading");
+    const resp = await fetch(\`/api/ai/summary?wallet=\${encodeURIComponent(wallet)}\${days > 0 ? "&days=" + days : ""}\`);
+    const data = await resp.json();
+    if (data.summary) {
+      content.innerHTML = \`<span class="ai-label">AI</span> \${escHtml(data.summary)}\`;
+    } else if (data.error) {
+      content.innerHTML = \`<span class="ai-label">AI</span> <span style="color:#94a3b8;">\${escHtml(data.error)}</span>\`;
+    }
+    content.classList.remove("loading");
+  } catch (e) {
+    content.innerHTML = \`<span class="ai-label">AI</span> <span style="color:#94a3b8;">Analysis unavailable</span>\`;
+    content.classList.remove("loading");
+  }
+}
+
+async function loadMarketCommentary(wallet, slug, badgeEl) {
+  if (aiCommentaries[slug]) {
+    showMarketCommentary(slug);
+    return;
+  }
+  if (badgeEl) {
+    badgeEl.classList.add("spinning");
+    badgeEl.textContent = "AI…";
+  }
+  try {
+    const resp = await fetch(\`/api/ai/market?wallet=\${encodeURIComponent(wallet)}&slug=\${encodeURIComponent(slug)}\`);
+    const data = await resp.json();
+    aiCommentaries[slug] = data.summary || "Commentary unavailable.";
+  } catch (e) {
+    aiCommentaries[slug] = "Failed to load commentary.";
+  }
+  if (badgeEl) badgeEl.classList.remove("spinning");
+  showMarketCommentary(slug);
+}
+
+function showMarketCommentary(slug) {
+  const d = document.getElementById("drillDown");
+  const existing = d.querySelector(\`.ai-market-comment[data-slug="\${escHtml(slug)}"]\`);
+  if (existing) {
+    existing.remove();
+    return;
+  }
+  const div = document.createElement("div");
+  div.className = "ai-comment ai-market-comment";
+  div.dataset.slug = slug;
+  div.innerHTML = \`<span class="ai-label">AI Analysis</span> \${escHtml(aiCommentaries[slug] || "Loading...")}\`;
+  const tableWrap = d.querySelector("div[style]");
+  if (tableWrap) tableWrap.after(div);
+}
+
+// ──────────────────────────────────────────────────────────────
+// Filtering
+// ──────────────────────────────────────────────────────────────
+
+function applyFilters() {
+  let rows = allData.rows;
+  const now = Math.floor(Date.now() / 1000);
+  if (currentDays > 0) {
+    const cutoff = now - currentDays * 86400;
+    rows = rows.filter(r => r.timestamp >= cutoff);
+  }
+  if (currentCoin !== "ALL") rows = rows.filter(r => r.coin === currentCoin);
+  if (currentTf !== "ALL") rows = rows.filter(r => r.timeframe === currentTf);
+  filteredRows = rows;
+}
+
+// ──────────────────────────────────────────────────────────────
+// Render
+// ──────────────────────────────────────────────────────────────
+
+function renderAll() {
+  applyFilters();
+  renderBanner();
+  renderSummary();
+  renderCharts();
+  renderMarketTable();
+  closeDrillDown();
+}
+
+function renderBanner() {
+  const b = document.getElementById("banner");
+  const ts = filteredRows.map(r => r.timestamp).filter(t => t > 0);
+  const range = ts.length > 0
+    ? \`\${new Date(Math.min(...ts)*1000).toISOString().slice(0,10)} → \${new Date(Math.max(...ts)*1000).toISOString().slice(0,10)}\`
+    : "";
+  const source = allData.source === "d1" ? " · 📦 from persistent storage" : "";
+  b.textContent = \`📅 Data range: \${range} (\${filteredRows.length.toLocaleString()} rows)\${source}\`;
+}
+
+function renderSummary() {
+  const pnl = computeOverallPnlJs(filteredRows);
+  const fmt = (v) => (v >= 0 ? "+" : "") + "$" + v.toFixed(2);
+  const color = (v) => v > 0 ? "green" : v < 0 ? "red" : "gray";
+  document.getElementById("summaryCards").innerHTML = \`
+    <div class="summary-item"><div class="label">Total P&amp;L</div><div class="value \${color(pnl.total_pnl)}">\${fmt(pnl.total_pnl)}</div></div>
+    <div class="summary-item"><div class="label">Trades</div><div class="value gray">\${pnl.trade_count.toLocaleString()}</div></div>
+    <div class="summary-item"><div class="label">Markets</div><div class="value gray">\${pnl.unique_markets}</div></div>
+    <div class="summary-item"><div class="label">Win Rate</div><div class="value gray">\${(pnl.win_rate*100).toFixed(1)}%</div></div>
+    <div class="summary-item"><div class="label">W / L</div><div class="value gray">\${pnl.win_count} / \${pnl.loss_count}</div></div>
+  \`;
+}
+
+function renderCharts() {
+  const coinPnl = computePerCoinPnlJs(filteredRows);
+  const tfPnl = computePerTimeframePnlJs(filteredRows);
+  const dailyPnl = computeDailyPnlJs(filteredRows);
+  const cumSum = (() => { let s = 0; return dailyPnl.map(d => { s += d.pnl; return s; }); })();
+
+  if (coinChart) coinChart.destroy();
+  coinChart = new Chart(document.getElementById("coinChart").getContext("2d"), {
+    type: "bar",
+    data: { labels: coinPnl.map(c => c.coin), datasets: [{ label: "P&L (USD)", data: coinPnl.map(c => c.pnl), backgroundColor: coinPnl.map(c => c.pnl >= 0 ? "rgba(34,197,94,0.6)" : "rgba(239,68,68,0.6)"), borderColor: coinPnl.map(c => c.pnl >= 0 ? "#22c55e" : "#ef4444"), borderWidth: 1 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: "#94a3b8" }, grid: { color: "#1e293b" } }, y: { ticks: { color: "#94a3b8", callback: v => "$" + v.toLocaleString() }, grid: { color: "#1e293b" } } } },
+  });
+
+  if (tfChart) tfChart.destroy();
+  tfChart = new Chart(document.getElementById("tfChart").getContext("2d"), {
+    type: "bar",
+    data: { labels: tfPnl.map(t => t.timeframe), datasets: [{ label: "P&L (USD)", data: tfPnl.map(t => t.pnl), backgroundColor: tfPnl.map(t => t.pnl >= 0 ? "rgba(34,197,94,0.6)" : "rgba(239,68,68,0.6)"), borderColor: tfPnl.map(t => t.pnl >= 0 ? "#22c55e" : "#ef4444"), borderWidth: 1 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: "#94a3b8" }, grid: { color: "#1e293b" } }, y: { ticks: { color: "#94a3b8", callback: v => "$" + v.toLocaleString() }, grid: { color: "#1e293b" } } } },
+  });
+
+  if (dailyChart) dailyChart.destroy();
+  dailyChart = new Chart(document.getElementById("dailyChart").getContext("2d"), {
+    type: "line",
+    data: {
+      labels: dailyPnl.map(d => d.date),
+      datasets: [
+        { label: "Daily P&L", data: dailyPnl.map(d => d.pnl), backgroundColor: "rgba(59,130,246,0.1)", borderColor: "#3b82f6", borderWidth: 1, pointRadius: 2, fill: false, tension: 0.1, yAxisID: "y" },
+        { label: "Cumulative", data: cumSum, borderColor: "#22c55e", borderWidth: 2, pointRadius: 0, fill: false, tension: 0.1, yAxisID: "y1" },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { labels: { color: "#94a3b8", boxWidth: 12, padding: 8, font: { size: 10 } } } },
+      scales: {
+        x: { ticks: { color: "#94a3b8", maxTicksLimit: 10 }, grid: { color: "#1e293b" } },
+        y: { position: "left", ticks: { color: "#94a3b8", callback: v => "$" + v.toLocaleString() }, grid: { color: "#1e293b" }, title: { display: true, text: "Daily", color: "#3b82f6" } },
+        y1: { position: "right", ticks: { color: "#94a3b8", callback: v => "$" + v.toLocaleString() }, grid: { display: false }, title: { display: true, text: "Cumulative", color: "#22c55e" } },
+      },
+    },
+  });
+
+  const allCoins = [...new Set(allData.rows.map(r => r.coin).filter(c => c !== "OTHER"))].sort();
+  const allTfs = [...new Set(allData.rows.map(r => r.timeframe).filter(t => t !== "N/A"))].sort();
+  document.getElementById("coinFilter").innerHTML = '<option value="ALL">All Coins</option>' + allCoins.map(c => \`<option value="\${c}">\${c}</option>\`).join("");
+  document.getElementById("tfFilter").innerHTML = '<option value="ALL">All Timeframes</option>' + allTfs.map(t => \`<option value="\${t}">\${t}</option>\`).join("");
+}
+
+function renderMarketTable() {
+  const mkts = computePerMarketPnlJs(filteredRows);
+  const fmt = (v) => (v >= 0 ? "+" : "") + "$" + v.toFixed(2);
+  const pnlClass = (v) => v >= 0 ? "pnl-pos" : "pnl-neg";
+  const tsStr = (ts) => ts > 0 ? new Date(ts * 1000).toISOString().slice(0, 16).replace("T", " ") : "";
+  const tbody = document.querySelector("#marketTable tbody");
+  const wallet = document.getElementById("walletInput").value.trim();
+
+  tbody.innerHTML = mkts.map((m, i) => \`
+    <tr class="\${m.key === selectedMarketKey ? "selected" : ""}" data-key="\${m.key.replace(/"/g,"&quot;")}" data-idx="\${i}">
+      <td>\${m.slug ? \`<a href="https://polymarket.com/event/\${escHtml(m.slug)}" target="_blank" style="color:#3b82f6;text-decoration:none;">\${escHtml(m.display_name)}</a>\` : escHtml(m.display_name)}</td>
+      <td>\${m.coin}</td>
+      <td>\${m.timeframe}</td>
+      <td class="\${pnlClass(m.pnl)}">\${fmt(m.pnl)}</td>
+      <td>\${m.trade_count}</td>
+      <td>\${tsStr(m.first_trade)}</td>
+      <td>\${tsStr(m.last_trade)}</td>
+      <td><span class="ai-badge" data-slug="\${escHtml(m.slug || m.key)}" onclick="event.stopPropagation(); loadMarketCommentary('\${wallet}', '\${escHtml(m.slug || m.key)}', this)">🤖 AI</span></td>
+    </tr>
+  \`).join("");
+
+  tbody.querySelectorAll("tr").forEach(tr => {
+    tr.addEventListener("click", () => {
+      drillDown(tr.dataset.key.replace(/&quot;/g, '"'));
+    });
+  });
+}
+
+function drillDown(key) {
+  selectedMarketKey = key;
+  const trades = filteredRows.filter(r => (r.slug || r.title || "(unknown)") === key).sort((a, b) => a.timestamp - b.timestamp);
+  if (trades.length === 0) return;
+
+  const fmt = (v) => (v >= 0 ? "+" : "") + "$" + v.toFixed(2);
+  const pnlClass = (v) => v >= 0 ? "pnl-pos" : "pnl-neg";
+  const pnl = trades.reduce((s, r) => s + r.signed_usdc, 0);
+  const wallet = document.getElementById("walletInput").value.trim();
+  const slug = trades[0].slug || key;
+
+  const d = document.getElementById("drillDown");
+  d.style.display = "block";
+  d.innerHTML = \`
+    <button class="close-btn" onclick="closeDrillDown()">✕</button>
+    <h3>\${slug ? \`<a href="https://polymarket.com/event/\${escHtml(slug)}" target="_blank" style="color:#e2e8f0;text-decoration:none;">\${escHtml(trades[0].title || key)}</a>\` : escHtml(trades[0].title || key)} &nbsp; <span class="\${pnlClass(pnl)}">\${fmt(pnl)}</span> — \${trades.length} trades</h3>
+    <div style="margin: 8px 0;"><span class="ai-badge" id="drillAiBtn">🤖 Get AI Analysis</span></div>
+    <div style="max-height:400px;overflow-y:auto;margin-top:8px;">
+      <table>
+        <thead><tr><th>Time</th><th>Type</th><th>Side</th><th>Outcome</th><th>Price</th><th>Shares</th><th>USDC</th><th>P&amp;L</th><th>Tx</th></tr></thead>
+        <tbody>
+          \${trades.map(t => \`
+            <tr>
+              <td>\${new Date(t.timestamp*1000).toISOString().slice(0,19).replace("T"," ")}</td>
+              <td>\${t.type}</td>
+              <td>\${t.side}</td>
+              <td>\${t.outcome}</td>
+              <td>\${t.price > 0 ? "$"+t.price.toFixed(4) : ""}</td>
+              <td>\${t.size.toFixed(2)}</td>
+              <td>\${t.usdcSize > 0 ? "$"+t.usdcSize.toFixed(2) : ""}</td>
+              <td class="\${pnlClass(t.signed_usdc)}">\${fmt(t.signed_usdc)}</td>
+              <td>\${t.transactionHash ? '<a href="https://polygonscan.com/tx/'+t.transactionHash+'" target="_blank" style="color:#3b82f6;">🔗</a>' : ""}</td>
+            </tr>
+          \`).join("")}
+        </tbody>
+      </table>
+    </div>
+  \`;
+
+  document.getElementById("drillAiBtn").addEventListener("click", function() {
+    loadMarketCommentary(wallet, slug, this);
+  });
+
+  if (aiCommentaries[slug]) showMarketCommentary(slug);
+}
+
+function closeDrillDown() {
+  selectedMarketKey = null;
+  document.getElementById("drillDown").style.display = "none";
+  renderMarketTable();
+}
+
+// ──────────────────────────────────────────────────────────────
+// JS P&L computation
+// ──────────────────────────────────────────────────────────────
+
+function computeOverallPnlJs(rows) {
+  const totalPnl = rows.reduce((s, r) => s + r.signed_usdc, 0);
+  const wins = rows.filter(r => r.signed_usdc > 0).length;
+  const losses = rows.filter(r => r.signed_usdc < 0).length;
+  return { total_pnl: totalPnl, trade_count: rows.length, unique_markets: new Set(rows.map(r => r.slug).filter(Boolean)).size, win_rate: rows.length > 0 ? wins / rows.length : 0, win_count: wins, loss_count: losses };
+}
+
+function computePerCoinPnlJs(rows) {
+  const groups = {};
+  for (const r of rows) {
+    const c = r.coin || "OTHER";
+    if (!groups[c]) groups[c] = { pnl: 0, trade_count: 0, markets: new Set(), wins: 0 };
+    groups[c].pnl += r.signed_usdc; groups[c].trade_count++;
+    if (r.slug) groups[c].markets.add(r.slug);
+    if (r.signed_usdc > 0) groups[c].wins++;
+  }
+  return Object.entries(groups).map(([coin, g]) => ({ coin, pnl: g.pnl, trade_count: g.trade_count, unique_markets: g.markets.size, win_rate: g.trade_count > 0 ? g.wins / g.trade_count : 0 })).sort((a, b) => b.pnl - a.pnl);
+}
+
+function computePerTimeframePnlJs(rows) {
+  const groups = {};
+  for (const r of rows) {
+    const tf = r.timeframe || "N/A";
+    if (!groups[tf]) groups[tf] = { pnl: 0, trade_count: 0, markets: new Set() };
+    groups[tf].pnl += r.signed_usdc; groups[tf].trade_count++;
+    if (r.slug) groups[tf].markets.add(r.slug);
+  }
+  return Object.entries(groups).map(([timeframe, g]) => ({ timeframe, pnl: g.pnl, trade_count: g.trade_count, unique_markets: g.markets.size })).sort((a, b) => b.pnl - a.pnl);
+}
+
+function computePerMarketPnlJs(rows) {
+  const groups = {};
+  for (const r of rows) {
+    const key = r.slug || r.title || "(unknown)";
+    if (!groups[key]) groups[key] = { slug: r.slug, title: r.title, coin: r.coin, timeframe: r.timeframe, pnl: 0, trade_count: 0, first_trade: Infinity, last_trade: -Infinity, buy_count: 0, sell_count: 0, redeem_count: 0, wins: 0 };
+    const g = groups[key]; g.pnl += r.signed_usdc; g.trade_count++;
+    if (r.timestamp < g.first_trade) g.first_trade = r.timestamp;
+    if (r.timestamp > g.last_trade) g.last_trade = r.timestamp;
+    if (r.side === "BUY") g.buy_count++;
+    if (r.side === "SELL") g.sell_count++;
+    if (r.type === "REDEEM") g.redeem_count++;
+    if (r.signed_usdc > 0) g.wins++;
+  }
+  return Object.entries(groups).map(([key, g]) => ({ key, slug: g.slug, title: g.title, display_name: normalizeMarketNameClient(g.slug || g.title), coin: g.coin, timeframe: g.timeframe, pnl: g.pnl, trade_count: g.trade_count, first_trade: g.first_trade === Infinity ? 0 : g.first_trade, last_trade: g.last_trade === -Infinity ? 0 : g.last_trade, win_rate: g.trade_count > 0 ? g.wins / g.trade_count : 0 })).sort((a, b) => b.pnl - a.pnl);
+}
+
+function computeDailyPnlJs(rows) {
+  const groups = {};
+  for (const r of rows) {
+    if (!r.date) continue;
+    if (!groups[r.date]) groups[r.date] = { date: r.date, pnl: 0, trades: 0 };
+    groups[r.date].pnl += r.signed_usdc; groups[r.date].trades++;
+  }
+  return Object.values(groups).sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function normalizeMarketNameClient(slug) {
+  if (!slug) return "(unknown)";
+  if (slug === "__platform_credits__") return "Platform Credits";
+  if (slug.includes(" ")) return slug;
+  const parts = slug.split("-");
+  const coin = (parts[0] || "").toUpperCase();
+  const tfMatch = parts.find((p) => /^\d+[mhd]$/.test(p)) || "";
+  const tsPart = parts[parts.length - 1];
+  if (/^\d{10}$/.test(tsPart)) { const dt = new Date(parseInt(tsPart) * 1000).toISOString().slice(0, 16).replace("T", " "); return \`\${coin} \${tfMatch} \${dt}\`; }
+  return slug.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function showStatus(msg, type) { document.getElementById("statusArea").innerHTML = msg ? \`<div class="\${type}">\${msg}</div>\` : ""; }
+function updateTimePresetButtons(d) { document.querySelectorAll("#timePresets button").forEach(b => b.classList.toggle("active", parseInt(b.dataset.days) === d)); }
+function escHtml(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
+
+document.getElementById("loadBtn").addEventListener("click", () => loadData(false));
+document.getElementById("clearBtn").addEventListener("click", () => loadData(true));
+document.getElementById("walletInput").addEventListener("keydown", (e) => { if (e.key === "Enter") loadData(false); });
+
+document.getElementById("timePresets").addEventListener("click", (e) => {
+  if (e.target.tagName === "BUTTON") {
+    currentDays = parseInt(e.target.dataset.days);
+    updateTimePresetButtons(currentDays);
+    renderAll();
+    const w = document.getElementById("walletInput").value.trim();
+    if (w) loadAiSummary(w, currentDays);
+  }
+});
+
+document.getElementById("coinFilter").addEventListener("change", (e) => { currentCoin = e.target.value; renderAll(); });
+document.getElementById("tfFilter").addEventListener("change", (e) => { currentTf = e.target.value; renderAll(); });
+
+if (document.getElementById("walletInput").value.trim().length > 10) loadData(false);
+</script>
+</body>
+</html>`;

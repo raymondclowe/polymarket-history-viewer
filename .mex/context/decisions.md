@@ -12,42 +12,32 @@ edges:
     condition: when a decision relates to system structure
   - target: context/stack.md
     condition: when a decision relates to technology choice
-last_updated: 2026-06-19
+last_updated: 2026-06-21
 ---
 
 # Decisions
 
 ## Decision Log
 
-### D001: urllib over requests (2026-06-19)
-**Decision:** Use stdlib `urllib.request` for HTTP calls, not `requests`.
-**Reasoning:** Matches convention in `polymarket-trader-emulation`. Avoids an extra dependency. The API surface is tiny (one GET endpoint with query params).
+### D006: D1 over KV for persistent Worker storage (2026-06-21)
+**Decision:** Use Cloudflare D1 (SQLite via HTTP) instead of KV for caching trade data.
+**Reasoning:** D1 supports SQL queries (SELECT with WHERE, ORDER BY, JOIN) which are essential for AI analysis (filter by slug) and time-series (daily P&L). KV only offers key-value lookups with 1hr TTL — insufficient for the new features. D1 also handles dedup via UNIQUE constraints natively. Cost is negligible at this scale (~20k rows).
 
-### D002: JSON file cache over SQLite (2026-06-19)
-**Decision:** Cache API responses as JSON files in `cache/<wallet>.json`.
-**Reasoning:** Simple, debuggable, version-control-friendly (`.gitkeep` + `.gitignore` pattern). No need for a database in a read-only dashboard.
+### D007: Workers AI (Llama 3.2 3B) over OpenAI API (2026-06-21)
+**Decision:** Use `@cf/meta/llama-3.2-3b-instruct` via Workers AI binding for trading commentary.
+**Reasoning:** Tight integration with Workers runtime — no API keys, no external HTTP calls, no latency from a separate provider. The 3B model is fast (~500ms on cold start), cheap (~$0.001/call), and sufficient for analysis of structured numeric data. Falls back gracefully with "not available" if the AI binding is missing.
 
-### D003: 4-layer defense for API data (2026-06-19)
-**Decision:** Every API fetch goes through cache → retry → dedup → validate pipeline.
-**Reasoning:** Polymarket Data API is unreliable — returns duplicates, stale data, and sometimes 429s. Defensive layering prevents bad data from reaching the UI.
+### D008: Smart Placement for API-proximity execution (2026-06-21)
+**Decision:** Use `placement = { mode = "smart" }` to deploy the Worker near Polymarket API servers, not near users.
+**Reasoning:** The worker spends the vast majority of its time on server-side data fetching (Polymarket API pagination), not serving HTML/JSON to the browser. Smart Placement minimizes data-fetch latency. The HTML dashboard is simple text so user-proximity is irrelevant.
 
-### D004: Coin extracted from slug + title fallback (2026-06-19)
-**Decision:** Parse `slug` first (e.g., `btc-5m-up-or-down-...` → BTC), fall back to regex on `title`.
-**Reasoning:** Slugs are machine-generated and reliable. Titles are human-written and vary in format. Double extraction maximizes coverage.
+### D009: Multi-module Worker architecture (2026-06-21)
+**Decision:** Split the Worker into `index.js` (routing/D1), `data.js` (P&L math), `ai.js` (commentary), `html.js` (UI template).
+**Reasoning:** The single-file approach became unwieldy at ~800 lines. Each module has a single responsibility, making testing and iteration easier. ES modules in Workers support named exports naturally.
 
-### D005: CSV price derived from usdcAmount/size (2026-06-19)
-**Decision:** Derive `price` as `abs(usdcAmount) / size` from CSV rows that lack an explicit price column.
-**Reasoning:** Polymarket CSV exports have `usdcAmount` and `size` (token amount). Price is computable from those two fields. This avoids requiring users to have a specific CSV format.
-     Do not document every decision — only ones where "why" matters.
-     Minimum 3 decision entries during initial population. If you cannot identify 3,
-     write placeholder entries with "[TO DETERMINE]" and explain what decision is pending.
-
-     Format for each entry:
-
-     ### [Decision Title]
-     **Date:** YYYY-MM-DD (check git history for real dates when possible)
-     **Status:** Active | Superseded by [title]
-     **Decision:** [What was decided, in one sentence]
+### D010: Individual INSERT via db.batch() over multi-VALUES (2026-06-21)
+**Decision:** Use individual prepared statements batched via `db.batch()` instead of single INSERT with multiple VALUES rows.
+**Reasoning:** SQLite has a 999 variable limit per query. A multi-VALUES INSERT with 15 columns exceeds that limit at just 67 rows. D1's `db.batch()` accepts up to 100 individual statements per call, which avoids the limit entirely for any batch size.
      **Reasoning:** [Why this was chosen]
      **Alternatives considered:** [What else was considered and why it was rejected]
      **Consequences:** [What this means for the codebase going forward]
