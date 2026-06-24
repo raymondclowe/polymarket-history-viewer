@@ -18,7 +18,7 @@ last_updated: 2026-06-19
 
 ## Naming
 
-- Files: `snake_case.py` (`data_loader.py`, `data_processor.py`)
+- Files: snake_case naming (`data_loader.py`, `data_processor.py`)
 - Functions: `snake_case`, verb-first (`fetch_activity_page`, `compute_per_market_pnl`)
 - Private helpers: prefix `_` (`_extract_coin_from_slug`, `_cache_path`, `_fmt_usd`)
 - Streamlit cached functions: prefix `_cached_` (`_cached_api_fetch`, `_cached_csv_load`)
@@ -33,7 +33,7 @@ last_updated: 2026-06-19
 ## Verify Checklist
 
 1. Run `uv run ruff check .` — must pass with All checks passed!
-2. Run `uv run streamlit run app.py` — must start without import errors or tracebacks
+2. The dev server command `uv run streamlit run app` must start without import errors or tracebacks
 3. All `@st.cache_data` functions have explicit `ttl` or `show_spinner`
 4. No raw `print()` statements — use `st.info()`/`st.warning()`/`st.error()` for user-facing messages
 <!-- How code is organised within files and across the codebase.

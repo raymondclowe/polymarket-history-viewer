@@ -24,7 +24,7 @@ last_updated: 2026-06-21
 **Reasoning:** D1 supports SQL queries (SELECT with WHERE, ORDER BY, JOIN) which are essential for AI analysis (filter by slug) and time-series (daily P&L). KV only offers key-value lookups with 1hr TTL — insufficient for the new features. D1 also handles dedup via UNIQUE constraints natively. Cost is negligible at this scale (~20k rows).
 
 ### D007: Workers AI (Llama 3.2 3B) over OpenAI API (2026-06-21)
-**Decision:** Use `@cf/meta/llama-3.2-3b-instruct` via Workers AI binding for trading commentary.
+**Decision:** Use Workers AI (Cloudflare-hosted Llama 3.2 3B model via binding) for trading commentary.
 **Reasoning:** Tight integration with Workers runtime — no API keys, no external HTTP calls, no latency from a separate provider. The 3B model is fast (~500ms on cold start), cheap (~$0.001/call), and sufficient for analysis of structured numeric data. Falls back gracefully with "not available" if the AI binding is missing.
 
 ### D008: Smart Placement for API-proximity execution (2026-06-21)
@@ -32,7 +32,7 @@ last_updated: 2026-06-21
 **Reasoning:** The worker spends the vast majority of its time on server-side data fetching (Polymarket API pagination), not serving HTML/JSON to the browser. Smart Placement minimizes data-fetch latency. The HTML dashboard is simple text so user-proximity is irrelevant.
 
 ### D009: Multi-module Worker architecture (2026-06-21)
-**Decision:** Split the Worker into `index.js` (routing/D1), `data.js` (P&L math), `ai.js` (commentary), `html.js` (UI template).
+**Decision:** Split the Worker into `index.js` (routing + API fetching), `data.js` (P&L math), `html.js` (UI template).
 **Reasoning:** The single-file approach became unwieldy at ~800 lines. Each module has a single responsibility, making testing and iteration easier. ES modules in Workers support named exports naturally.
 
 ### D010: Individual INSERT via db.batch() over multi-VALUES (2026-06-21)
