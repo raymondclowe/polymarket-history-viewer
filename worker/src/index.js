@@ -54,7 +54,7 @@ async function handleApiData(url, corsHeaders) {
     return json({ error: "Missing or invalid wallet address" }, 400, corsHeaders);
   }
 
-  const days = parseInt(url.searchParams.get("days") || "0");
+  const days = parseFloat(url.searchParams.get("days") || "0");
 
   const rows = await fetchAllActivity(wallet, days);
   const processed = processRows(rows, wallet);
@@ -75,7 +75,7 @@ async function fetchAllActivity(wallet, maxDays = 0) {
   if (maxDays > 0) {
     // Fast path: fetch only the last N days
     windowStart = Math.max(
-      now - maxDays * 86400,
+      Math.floor(now - maxDays * 86400),
       Math.floor(new Date("2025-01-01T00:00:00Z").getTime() / 1000)
     );
   } else {

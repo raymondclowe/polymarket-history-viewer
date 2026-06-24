@@ -99,9 +99,11 @@ td a:hover { text-decoration: underline !important; }
     <!-- Time Presets & Filters -->
     <div class="card" style="margin-top:16px;">
       <div class="btn-group" id="timePresets">
-        <button class="btn btn-outline btn-sm active" data-days="0">All Time</button>
+        <button class="btn btn-outline btn-sm" data-days="0">All Time</button>
+        <button class="btn btn-outline btn-sm" data-days="0.0417">Last 1h</button>
+        <button class="btn btn-outline btn-sm" data-days="0.5">Last 12h</button>
+        <button class="btn btn-outline btn-sm active" data-days="1">Last 24h</button>
         <button class="btn btn-outline btn-sm" data-days="7">Last 7 Days</button>
-        <button class="btn btn-outline btn-sm" data-days="1">Last 24h</button>
         <button class="btn btn-outline btn-sm" data-days="30">Last 30 Days</button>
       </div>
       <div class="filter-row">
@@ -156,7 +158,7 @@ td a:hover { text-decoration: underline !important; }
             <th data-sort="timeframe">TF <span class="sort-arrow">▾</span></th>
             <th data-sort="pnl">P&amp;L <span class="sort-arrow">▾</span></th>
             <th data-sort="trade_count">Trades <span class="sort-arrow">▾</span></th>
-            <th data-sort="win_rate">Win Rate <span class="sort-arrow">▾</span></th>
+            <th data-sort="win_rate" title="Percentage of transactions with positive cash flow (sells/redeems count as positive, buys as negative). A profitable buy+sell pair shows 50%. Not a trade win-rate.">Pos % <span class="sort-arrow">▾</span></th>
             <th data-sort="first_trade">First Trade <span class="sort-arrow">▾</span></th>
             <th data-sort="last_trade">Last Trade <span class="sort-arrow">▾</span></th>
           </tr></thead>
@@ -177,7 +179,7 @@ td a:hover { text-decoration: underline !important; }
 
 let allData = null;
 let filteredRows = [];
-let currentDays = 7;
+let currentDays = 1;
 let currentCoin = "ALL";
 let currentTf = "ALL";
 let currentType = "ALL";
@@ -188,8 +190,8 @@ let coinChart = null;
 let tfChart = null;
 let dailyChart = null;
 let selectedMarketKey = null;
-let loadDays = 7;
-let sortColumn = "pnl";
+let loadDays = 1;
+let sortColumn = "last_trade";
 let sortDirection = "desc";
 
 // ──────────────────────────────────────────────────────────────
@@ -216,6 +218,7 @@ async function loadData(days) {
 
     allData = data;
     resetFilters();
+    updateTimePresetButtons(loadDays);
     renderAll();
     document.getElementById("dashboard").style.display = "block";
     showStatus("", "");
@@ -225,14 +228,14 @@ async function loadData(days) {
 }
 
 function resetFilters() {
-  currentDays = 7;
+  currentDays = loadDays;
   currentCoin = "ALL";
   currentTf = "ALL";
   currentType = "ALL";
   currentSearch = "";
   dateFrom = "";
   dateTo = "";
-  sortColumn = "pnl";
+  sortColumn = "last_trade";
   sortDirection = "desc";
   selectedMarketKey = null;
   document.getElementById("coinFilter").value = "ALL";
@@ -270,6 +273,19 @@ function applyFilters() {
     const toTs = Math.floor(new Date(dateTo + "T23:59:59Z").getTime() / 1000);
     rows = rows.filter(r => r.timestamp <= toTs);
   }
+
+  // Drop orphan redeems: a redeem with no other rows for the same market
+  // in the filtered set is settling a position from outside this window
+  // and produces misleading P&L that doesn't match the visible trades.
+  const slugsWithActivity = new Set();
+  for (const r of rows) {
+    if (r.type !== "REDEEM" && r.slug) slugsWithActivity.add(r.slug);
+  }
+  rows = rows.filter(r => {
+    if (r.type !== "REDEEM") return true;
+    return !r.slug || slugsWithActivity.has(r.slug);
+  });
+
   filteredRows = rows;
 }
 
@@ -343,7 +359,7 @@ function renderSummary() {
     <div class="summary-item"><div class="label">Total P&amp;L</div><div class="value \${color(pnl.total_pnl)}">\${fmt(pnl.total_pnl)}</div></div>
     <div class="summary-item"><div class="label">Trades</div><div class="value gray">\${pnl.trade_count.toLocaleString()}</div></div>
     <div class="summary-item"><div class="label">Markets</div><div class="value gray">\${pnl.unique_markets}</div></div>
-    <div class="summary-item"><div class="label">Win Rate</div><div class="value gray">\${(pnl.win_rate*100).toFixed(1)}%</div></div>
+    <div class="summary-item"><div class="label" title="Percentage of transactions with positive cash flow (sells/redeems count as positive, buys as negative). Not a trade win-rate.">Pos %</div><div class="value gray">\${(pnl.win_rate*100).toFixed(1)}%</div></div>
     <div class="summary-item"><div class="label">W / L</div><div class="value gray">\${pnl.win_count} / \${pnl.loss_count}</div></div>
   \`;
 }
@@ -548,7 +564,7 @@ function normalizeMarketNameClient(slug) {
 }
 
 function showStatus(msg, type) { document.getElementById("statusArea").innerHTML = msg ? \`<div class="\${type}">\${msg}</div>\` : ""; }
-function updateTimePresetButtons(d) { document.querySelectorAll("#timePresets button").forEach(b => b.classList.toggle("active", parseInt(b.dataset.days) === d)); }
+function updateTimePresetButtons(d) { document.querySelectorAll("#timePresets button").forEach(b => b.classList.toggle("active", parseFloat(b.dataset.days) === d)); }
 function escHtml(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
 
 // ── Load / Refresh ──
@@ -557,13 +573,12 @@ document.getElementById("loadBtn").addEventListener("click", () => loadData(load
 document.getElementById("clearBtn").addEventListener("click", () => loadData(loadDays));
 document.getElementById("walletInput").addEventListener("keydown", (e) => { if (e.key === "Enter") loadData(loadDays); });
 
-// ── Time presets (client-side filter) ──
+// ── Time presets (trigger server-side fetch) ──
 
 document.getElementById("timePresets").addEventListener("click", (e) => {
   if (e.target.tagName === "BUTTON") {
-    currentDays = parseInt(e.target.dataset.days);
-    updateTimePresetButtons(currentDays);
-    renderAll();
+    const days = parseFloat(e.target.dataset.days);
+    loadData(days);
   }
 });
 
@@ -593,7 +608,7 @@ document.querySelectorAll("#marketTable th[data-sort]").forEach(th => {
 
 // ── Auto-load on page load ──
 
-if (document.getElementById("walletInput").value.trim().length > 10) loadData(7);
+if (document.getElementById("walletInput").value.trim().length > 10) loadData(1);
 </script>
 </body>
 </html>`;

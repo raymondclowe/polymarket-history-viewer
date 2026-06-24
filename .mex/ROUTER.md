@@ -14,7 +14,7 @@ edges:
     condition: when setting up the dev environment or running the project for the first time
   - target: patterns/INDEX.md
     condition: when starting a task — check the pattern index for a matching pattern file
-last_updated: 2026-06-21  # In-memory only (no D1), sortable table, type/search/date filters, fast load last 7 days
+last_updated: 2026-06-21  # Time presets now trigger full API fetch (was client-side filter only), currentDays synced to loadDays
 ---
 
 # Session Bootstrap
@@ -57,6 +57,7 @@ Then read this file fully before doing anything else in this session.
 - Timeframe extraction from title strings is heuristic and may misclassify
 - First fetch of full history can take 30-60s (20k+ rows across 7-day windows)
 - No pagination in market detail table (all rows rendered in memory)
+- Time presets trigger full API refetch (not client-side only); could be optimized for "subset" case
 
 **Recently fixed:**
 - **D1 corruption removed** — Switched to pure in-memory API fetch. P&L now correctly shows ~$1,291 loss instead of bogus +$2k profit.
