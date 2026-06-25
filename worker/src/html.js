@@ -157,6 +157,12 @@ td a:hover { text-decoration: underline !important; }
       <div class="card"><h2>P&L Over Time</h2><div class="chart-wrap"><canvas id="dailyChart"></canvas></div></div>
     </div>
 
+    <!-- Market P&L Distribution -->
+    <div class="card">
+      <h2>Market P&amp;L Distribution by Coin <span style="font-weight:400;color:#64748b;font-size:0.75rem;">— min ★ median ◇ mean ▯ max</span></h2>
+      <div class="chart-wrap" style="height:400px;"><canvas id="marketDistChart"></canvas></div>
+    </div>
+
     <!-- Market Table -->
     <div class="card">
       <h2>Market Details <span style="font-weight:400;color:#64748b;font-size:0.8rem;">— click a row to drill down</span></h2>
@@ -199,6 +205,7 @@ let dateTo = "";
 let coinChart = null;
 let tfChart = null;
 let dailyChart = null;
+let marketDistChart = null;
 let selectedMarketKey = null;
 let loadDays = 1;
 let pctMode = false;
@@ -343,6 +350,7 @@ function renderAll() {
   renderBanner();
   renderSummary();
   renderCharts();
+  renderMarketDistChart();
   renderMarketTable();
   closeDrillDown();
 }
@@ -567,6 +575,154 @@ function computeDailyPnlJs(rows) {
     groups[r.date].pnl += r.signed_usdc; groups[r.date].trades++;
   }
   return Object.values(groups).sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function computePerMarketPnlByCoinJs(rows) {
+  const byCoin = {};
+  for (const r of rows) {
+    const coin = r.coin || "OTHER";
+    if (!byCoin[coin]) byCoin[coin] = [];
+    byCoin[coin].push(r);
+  }
+  const results = [];
+  for (const [coin, trades] of Object.entries(byCoin)) {
+    const mktGroups = {};
+    for (const t of trades) {
+      const key = t.slug || t.title || "(unknown)";
+      if (!mktGroups[key]) mktGroups[key] = { pnl: 0, invested: 0 };
+      mktGroups[key].pnl += t.signed_usdc;
+      if ((t.type === "TRADE" && t.side === "BUY") || t.type === "SPLIT")
+        mktGroups[key].invested += t.usdcSize;
+    }
+    const values = Object.values(mktGroups).map(g => {
+      if (pctMode && g.invested > 0) return (g.pnl / g.invested) * 100;
+      return g.pnl;
+    }).sort((a, b) => a - b);
+    const n = values.length;
+    if (n === 0) continue;
+    const min = values[0], max = values[n - 1];
+    const sum = values.reduce((s, v) => s + v, 0);
+    const mean = sum / n;
+    let median;
+    if (n % 2 === 1) median = values[Math.floor(n / 2)];
+    else median = (values[n / 2 - 1] + values[n / 2]) / 2;
+    const lower = values.slice(0, Math.floor(n / 2));
+    const upper = values.slice(Math.ceil(n / 2));
+    let q1, q3;
+    const lN = lower.length;
+    if (lN % 2 === 1) q1 = lower[Math.floor(lN / 2)];
+    else if (lN > 0) q1 = (lower[lN / 2 - 1] + lower[lN / 2]) / 2;
+    else q1 = min;
+    const uN = upper.length;
+    if (uN % 2 === 1) q3 = upper[Math.floor(uN / 2)];
+    else if (uN > 0) q3 = (upper[uN / 2 - 1] + upper[uN / 2]) / 2;
+    else q3 = max;
+    const totalInvested = Object.values(mktGroups).reduce((s, g) => s + g.invested, 0);
+    results.push({ coin, min, max, mean, median, q1, q3, count: n, invested: totalInvested });
+  }
+  return results.sort((a, b) => b.count - a.count);
+}
+
+// Store stats externally — Chart.js v4 strips custom properties from data objects
+let _marketDistStats = [];
+
+const boxPlotPlugin = {
+  id: "boxPlotPlugin",
+  afterDraw(chart) {
+    const ctx = chart.ctx;
+    const meta = chart.getDatasetMeta(0);
+    if (!meta || !meta.data) return;
+    const yScale = chart.scales.y;
+    ctx.save();
+    for (let i = 0; i < meta.data.length; i++) {
+      const bar = meta.data[i];
+      const d = _marketDistStats[i];
+      if (!d || d.min == null || d.q1 === d.q3) continue;
+      const x = bar.x, bw = bar.width * 0.6;
+      const px = (v) => yScale.getPixelForValue(v);
+      const yM = [d.min, d.q1, d.median, d.mean, d.q3, d.max].map(px);
+      const [yMin, yQ1, yMed, yMean, yQ3, yMax] = yM;
+      ctx.strokeStyle = "rgba(148,163,184,0.8)";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(x, yMin); ctx.lineTo(x, yQ1); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x - bw, yMin); ctx.lineTo(x + bw, yMin); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x, yQ3); ctx.lineTo(x, yMax); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x - bw, yMax); ctx.lineTo(x + bw, yMax); ctx.stroke();
+      ctx.fillStyle = "#f59e0b";
+      const ds = 4;
+      ctx.beginPath(); ctx.moveTo(x, yMed - ds); ctx.lineTo(x + ds, yMed);
+      ctx.lineTo(x, yMed + ds); ctx.lineTo(x - ds, yMed); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = "#eab308";
+      ctx.beginPath(); ctx.arc(x, yMean, 3.5, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = "#eab308"; ctx.lineWidth = 1; ctx.stroke();
+    }
+    ctx.restore();
+  }
+};
+
+function renderMarketDistChart() {
+  if (marketDistChart) marketDistChart.destroy();
+  const dists = computePerMarketPnlByCoinJs(filteredRows);
+  if (dists.length === 0) return;
+  const topDists = dists.slice(0, 20);
+  _marketDistStats = topDists;
+  const labels = topDists.map(d => d.coin);
+  const ctx = document.getElementById("marketDistChart").getContext("2d");
+  marketDistChart = new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [{
+        label: "IQR (Q1\u2013Q3)",
+        data: topDists.map(d => [d.q1, d.q3]),
+        backgroundColor: "rgba(59,130,246,0.25)",
+        borderColor: "rgba(59,130,246,0.5)",
+        borderWidth: 1,
+        borderRadius: 0,
+        barPercentage: 0.5,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title(items) { return "Coin: " + items[0].label; },
+            label(ctx2) {
+              const d = _marketDistStats[ctx2.dataIndex];
+              if (!d) return "";
+              const f = (v) => {
+                if (pctMode) return (v >= 0 ? "+" : "") + v.toFixed(1) + "%";
+                return (v >= 0 ? "+" : "-") + "$" + Math.abs(v).toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0});
+              };
+              return [
+                "Markets: " + d.count,
+                "Min: " + f(d.min),
+                "Q1: " + f(d.q1),
+                "Median: " + f(d.median),
+                "Mean: " + f(d.mean),
+                "Q3: " + f(d.q3),
+                "Max: " + f(d.max),
+              ];
+            }
+          }
+        }
+      },
+      scales: {
+        x: { ticks: { color: "#94a3b8" }, grid: { color: "#1e293b" } },
+        y: {
+          ticks: {
+            color: "#94a3b8",
+            callback: (v) => pctMode ? v.toFixed(1) + "%" : (v >= 0 ? "+" : "") + "$" + v.toLocaleString(),
+          },
+          grid: { color: "#1e293b" },
+        }
+      }
+    },
+    plugins: [boxPlotPlugin],
+  });
 }
 
 function normalizeMarketNameClient(slug) {
