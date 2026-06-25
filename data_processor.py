@@ -399,6 +399,12 @@ def compute_per_market_pnl(df: pd.DataFrame) -> pd.DataFrame:
     summary["first_trade_dt"] = pd.to_datetime(summary["first_trade"], unit="s", utc=True, errors="coerce")
     summary["last_trade_dt"] = pd.to_datetime(summary["last_trade"], unit="s", utc=True, errors="coerce")
 
+    # Invested capital (BUY + SPLIT USDC volume)
+    buy_mask = (df["type"] == "SPLIT") | ((df["type"] == "TRADE") & (df["side"] == "BUY"))
+    invested = df[buy_mask].groupby(group_col)["usdcSize"].sum()
+    summary = summary.merge(invested.rename("invested"), on=group_col, how="left")
+    summary["invested"] = summary["invested"].fillna(0)
+
     summary = summary.sort_values("pnl", ascending=False)
     return summary
 
@@ -417,6 +423,13 @@ def compute_per_coin_pnl(df: pd.DataFrame) -> pd.DataFrame:
     ).reset_index()
 
     summary["win_rate"] = summary["win_count"] / summary["trade_count"].replace(0, 1)
+
+    # Invested capital per coin
+    buy_mask = (df["type"] == "SPLIT") | ((df["type"] == "TRADE") & (df["side"] == "BUY"))
+    invested = df[buy_mask].groupby("coin")["usdcSize"].sum()
+    summary = summary.merge(invested.rename("invested"), on="coin", how="left")
+    summary["invested"] = summary["invested"].fillna(0)
+
     summary = summary.sort_values("pnl", ascending=False)
     return summary
 
@@ -433,6 +446,12 @@ def compute_per_timeframe_pnl(df: pd.DataFrame) -> pd.DataFrame:
         unique_markets=("slug", "nunique"),
     ).reset_index()
 
+    # Invested capital per timeframe
+    buy_mask = (df["type"] == "SPLIT") | ((df["type"] == "TRADE") & (df["side"] == "BUY"))
+    invested = df[buy_mask].groupby("timeframe")["usdcSize"].sum()
+    summary = summary.merge(invested.rename("invested"), on="timeframe", how="left")
+    summary["invested"] = summary["invested"].fillna(0)
+
     summary = summary.sort_values("pnl", ascending=False)
     return summary
 
@@ -442,6 +461,7 @@ def compute_overall_pnl(df: pd.DataFrame) -> dict[str, Any]:
     if df.empty:
         return {
             "total_pnl": 0.0,
+            "total_invested": 0.0,
             "trade_count": 0,
             "unique_markets": 0,
             "win_count": 0,
@@ -458,8 +478,13 @@ def compute_overall_pnl(df: pd.DataFrame) -> dict[str, Any]:
     win_count = int((per_market["pnl"] > 0).sum())
     loss_count = int((per_market["pnl"] < 0).sum())
 
+    # Invested capital (BUY + SPLIT USDC volume)
+    buy_mask = (df["type"] == "SPLIT") | ((df["type"] == "TRADE") & (df["side"] == "BUY"))
+    total_invested = df.loc[buy_mask, "usdcSize"].sum()
+
     return {
         "total_pnl": total_pnl,
+        "total_invested": total_invested,
         "trade_count": trade_count,
         "unique_markets": unique_markets,
         "win_count": win_count,

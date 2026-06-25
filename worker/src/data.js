@@ -115,15 +115,17 @@ export function computeOverallPnl(rows) {
       ? `${new Date(Math.min(...tsVals) * 1000).toISOString().slice(0, 10)} → ${new Date(Math.max(...tsVals) * 1000).toISOString().slice(0, 10)}`
       : "";
 
-  return { total_pnl: totalPnl, trade_count: rows.length, unique_markets: uniqueMarkets, win_rate: winRate, win_count: wins, loss_count: losses, coins, timeframes, date_range: dateRange };
+  const totalInvested = rows.filter(r => (r.type === "TRADE" && r.side === "BUY") || r.type === "SPLIT").reduce((s, r) => s + r.usdcSize, 0);
+  return { total_pnl: totalPnl, total_invested: totalInvested, trade_count: rows.length, unique_markets: uniqueMarkets, win_rate: winRate, win_count: wins, loss_count: losses, coins, timeframes, date_range: dateRange };
 }
 
 export function computePerCoinPnl(rows) {
   const groups = {};
   for (const r of rows) {
     const c = r.coin || "OTHER";
-    if (!groups[c]) groups[c] = { pnl: 0, trade_count: 0, markets: new Set(), wins: 0 };
+    if (!groups[c]) groups[c] = { pnl: 0, invested: 0, trade_count: 0, markets: new Set(), wins: 0 };
     groups[c].pnl += r.signed_usdc;
+    if ((r.type === "TRADE" && r.side === "BUY") || r.type === "SPLIT") groups[c].invested += r.usdcSize;
     groups[c].trade_count++;
     if (r.slug) groups[c].markets.add(r.slug);
     if (r.signed_usdc > 0) groups[c].wins++;
@@ -132,6 +134,7 @@ export function computePerCoinPnl(rows) {
     .map(([coin, g]) => ({
       coin,
       pnl: g.pnl,
+      invested: g.invested,
       trade_count: g.trade_count,
       unique_markets: g.markets.size,
       win_rate: g.trade_count > 0 ? g.wins / g.trade_count : 0,
@@ -143,8 +146,9 @@ export function computePerTimeframePnl(rows) {
   const groups = {};
   for (const r of rows) {
     const tf = r.timeframe || "N/A";
-    if (!groups[tf]) groups[tf] = { pnl: 0, trade_count: 0, markets: new Set() };
+    if (!groups[tf]) groups[tf] = { pnl: 0, invested: 0, trade_count: 0, markets: new Set() };
     groups[tf].pnl += r.signed_usdc;
+    if ((r.type === "TRADE" && r.side === "BUY") || r.type === "SPLIT") groups[tf].invested += r.usdcSize;
     groups[tf].trade_count++;
     if (r.slug) groups[tf].markets.add(r.slug);
   }
@@ -152,6 +156,7 @@ export function computePerTimeframePnl(rows) {
     .map(([timeframe, g]) => ({
       timeframe,
       pnl: g.pnl,
+      invested: g.invested,
       trade_count: g.trade_count,
       unique_markets: g.markets.size,
     }))
@@ -169,6 +174,7 @@ export function computePerMarketPnl(rows) {
         coin: r.coin,
         timeframe: r.timeframe,
         pnl: 0,
+        invested: 0,
         trade_count: 0,
         first_trade: Infinity,
         last_trade: -Infinity,
@@ -180,6 +186,7 @@ export function computePerMarketPnl(rows) {
     }
     const g = groups[key];
     g.pnl += r.signed_usdc;
+    if ((r.type === "TRADE" && r.side === "BUY") || r.type === "SPLIT") g.invested += r.usdcSize;
     g.trade_count++;
     if (r.timestamp < g.first_trade) g.first_trade = r.timestamp;
     if (r.timestamp > g.last_trade) g.last_trade = r.timestamp;
@@ -197,6 +204,7 @@ export function computePerMarketPnl(rows) {
       coin: g.coin,
       timeframe: g.timeframe,
       pnl: g.pnl,
+      invested: g.invested,
       trade_count: g.trade_count,
       first_trade: g.first_trade === Infinity ? 0 : g.first_trade,
       last_trade: g.last_trade === -Infinity ? 0 : g.last_trade,

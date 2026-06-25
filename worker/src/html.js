@@ -101,6 +101,9 @@ td a:hover { text-decoration: underline !important; }
       <div class="btn-group" id="timePresets">
         <button class="btn btn-outline btn-sm" data-days="0">All Time</button>
         <button class="btn btn-outline btn-sm" data-days="0.0417">Last 1h</button>
+        <button class="btn btn-outline btn-sm" data-days="0.0833">Last 2h</button>
+        <button class="btn btn-outline btn-sm" data-days="0.125">Last 3h</button>
+        <button class="btn btn-outline btn-sm" data-days="0.25">Last 6h</button>
         <button class="btn btn-outline btn-sm" data-days="0.5">Last 12h</button>
         <button class="btn btn-outline btn-sm active" data-days="1">Last 24h</button>
         <button class="btn btn-outline btn-sm" data-days="7">Last 7 Days</button>
@@ -136,6 +139,13 @@ td a:hover { text-decoration: underline !important; }
         <div>
           <label>To</label>
           <input type="date" id="dateTo" class="filter-input">
+        </div>
+        <div>
+          <label>Format</label>
+          <div style="display:flex;gap:2px;">
+            <button class="btn btn-outline btn-sm active" id="fmtUsdBtn" style="border-radius:6px 0 0 6px;">$</button>
+            <button class="btn btn-outline btn-sm" id="fmtPctBtn" style="border-radius:0 6px 6px 0;">%</button>
+          </div>
         </div>
       </div>
     </div>
@@ -191,6 +201,7 @@ let tfChart = null;
 let dailyChart = null;
 let selectedMarketKey = null;
 let loadDays = 1;
+let pctMode = false;
 let sortColumn = "last_trade";
 let sortDirection = "desc";
 
@@ -353,10 +364,9 @@ function renderBanner() {
 
 function renderSummary() {
   const pnl = computeOverallPnlJs(filteredRows);
-  const fmt = (v) => (v >= 0 ? "+" : "") + "$" + v.toFixed(2);
   const color = (v) => v > 0 ? "green" : v < 0 ? "red" : "gray";
   document.getElementById("summaryCards").innerHTML = \`
-    <div class="summary-item"><div class="label">Total P&amp;L</div><div class="value \${color(pnl.total_pnl)}">\${fmt(pnl.total_pnl)}</div></div>
+    <div class="summary-item"><div class="label">Total P&amp;L</div><div class="value \${color(pnl.total_pnl)}">\${_fmtPnl(pnl.total_pnl, pnl.total_invested)}</div></div>
     <div class="summary-item"><div class="label">Trades</div><div class="value gray">\${pnl.trade_count.toLocaleString()}</div></div>
     <div class="summary-item"><div class="label">Markets</div><div class="value gray">\${pnl.unique_markets}</div></div>
     <div class="summary-item"><div class="label" title="Percentage of transactions with positive cash flow (sells/redeems count as positive, buys as negative). Not a trade win-rate.">Pos %</div><div class="value gray">\${(pnl.win_rate*100).toFixed(1)}%</div></div>
@@ -371,17 +381,19 @@ function renderCharts() {
   const cumSum = (() => { let s = 0; return dailyPnl.map(d => { s += d.pnl; return s; }); })();
 
   if (coinChart) coinChart.destroy();
+  const coinHasInvested = coinPnl.some(c => c.invested);
   coinChart = new Chart(document.getElementById("coinChart").getContext("2d"), {
     type: "bar",
-    data: { labels: coinPnl.map(c => c.coin), datasets: [{ label: "P&L (USD)", data: coinPnl.map(c => c.pnl), backgroundColor: coinPnl.map(c => c.pnl >= 0 ? "rgba(34,197,94,0.6)" : "rgba(239,68,68,0.6)"), borderColor: coinPnl.map(c => c.pnl >= 0 ? "#22c55e" : "#ef4444"), borderWidth: 1 }] },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: "#94a3b8" }, grid: { color: "#1e293b" } }, y: { ticks: { color: "#94a3b8", callback: v => "$" + v.toLocaleString() }, grid: { color: "#1e293b" } } } },
+    data: { labels: coinPnl.map(c => c.coin), datasets: [{ label: pctMode && coinHasInvested ? "P&L (%)" : "P&L (USD)", data: pctMode && coinHasInvested ? coinPnl.map(c => c.invested ? c.pnl / c.invested * 100 : NaN) : coinPnl.map(c => c.pnl), backgroundColor: coinPnl.map(c => c.pnl >= 0 ? "rgba(34,197,94,0.6)" : "rgba(239,68,68,0.6)"), borderColor: coinPnl.map(c => c.pnl >= 0 ? "#22c55e" : "#ef4444"), borderWidth: 1 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: "#94a3b8" }, grid: { color: "#1e293b" } }, y: { ticks: { color: "#94a3b8", callback: pctMode && coinHasInvested ? (v => v.toFixed(1) + "%") : (v => "$" + v.toLocaleString()) }, grid: { color: "#1e293b" } } } },
   });
 
   if (tfChart) tfChart.destroy();
+  const tfHasInvested = tfPnl.some(t => t.invested);
   tfChart = new Chart(document.getElementById("tfChart").getContext("2d"), {
     type: "bar",
-    data: { labels: tfPnl.map(t => t.timeframe), datasets: [{ label: "P&L (USD)", data: tfPnl.map(t => t.pnl), backgroundColor: tfPnl.map(t => t.pnl >= 0 ? "rgba(34,197,94,0.6)" : "rgba(239,68,68,0.6)"), borderColor: tfPnl.map(t => t.pnl >= 0 ? "#22c55e" : "#ef4444"), borderWidth: 1 }] },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: "#94a3b8" }, grid: { color: "#1e293b" } }, y: { ticks: { color: "#94a3b8", callback: v => "$" + v.toLocaleString() }, grid: { color: "#1e293b" } } } },
+    data: { labels: tfPnl.map(t => t.timeframe), datasets: [{ label: pctMode && tfHasInvested ? "P&L (%)" : "P&L (USD)", data: pctMode && tfHasInvested ? tfPnl.map(t => t.invested ? t.pnl / t.invested * 100 : NaN) : tfPnl.map(t => t.pnl), backgroundColor: tfPnl.map(t => t.pnl >= 0 ? "rgba(34,197,94,0.6)" : "rgba(239,68,68,0.6)"), borderColor: tfPnl.map(t => t.pnl >= 0 ? "#22c55e" : "#ef4444"), borderWidth: 1 }] },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { color: "#94a3b8" }, grid: { color: "#1e293b" } }, y: { ticks: { color: "#94a3b8", callback: pctMode && tfHasInvested ? (v => v.toFixed(1) + "%") : (v => "$" + v.toLocaleString()) }, grid: { color: "#1e293b" } } } },
   });
 
   if (dailyChart) dailyChart.destroy();
@@ -421,7 +433,6 @@ function renderMarketTable() {
   mkts = sortMarkets(mkts);
   updateSortArrows();
 
-  const fmt = (v) => (v >= 0 ? "+" : "") + "$" + v.toFixed(2);
   const pnlClass = (v) => v >= 0 ? "pnl-pos" : "pnl-neg";
   const tsStr = (ts) => ts > 0 ? new Date(ts * 1000).toISOString().slice(0, 16).replace("T", " ") : "";
   const tbody = document.querySelector("#marketTable tbody");
@@ -432,7 +443,7 @@ function renderMarketTable() {
       <td>\${m.slug ? \`<a href="https://polymarket.com/event/\${escHtml(m.slug)}" target="_blank" style="color:#3b82f6;text-decoration:none;">\${escHtml(m.display_name)}</a>\` : escHtml(m.display_name)}</td>
       <td>\${m.coin}</td>
       <td>\${m.timeframe}</td>
-      <td class="\${pnlClass(m.pnl)}">\${fmt(m.pnl)}</td>
+      <td class="\${pnlClass(m.pnl)}">\${_fmtPnl(m.pnl, m.invested)}</td>
       <td>\${m.trade_count}</td>
       <td>\${wrPct(m.win_rate)}</td>
       <td>\${tsStr(m.first_trade)}</td>
@@ -452,16 +463,16 @@ function drillDown(key) {
   const trades = filteredRows.filter(r => (r.slug || r.title || "(unknown)") === key).sort((a, b) => a.timestamp - b.timestamp);
   if (trades.length === 0) return;
 
-  const fmt = (v) => (v >= 0 ? "+" : "") + "$" + v.toFixed(2);
   const pnlClass = (v) => v >= 0 ? "pnl-pos" : "pnl-neg";
   const pnl = trades.reduce((s, r) => s + r.signed_usdc, 0);
+  const invested = trades.filter(r => (r.type === "TRADE" && r.side === "BUY") || r.type === "SPLIT").reduce((s, r) => s + r.usdcSize, 0);
   const slug = trades[0].slug || key;
 
   const d = document.getElementById("drillDown");
   d.style.display = "block";
   d.innerHTML = \`
     <button class="close-btn" onclick="closeDrillDown()">✕</button>
-    <h3>\${slug ? \`<a href="https://polymarket.com/event/\${escHtml(slug)}" target="_blank" style="color:#e2e8f0;text-decoration:none;">\${escHtml(trades[0].title || key)}</a>\` : escHtml(trades[0].title || key)} &nbsp; <span class="\${pnlClass(pnl)}">\${fmt(pnl)}</span> — \${trades.length} trades</h3>
+    <h3>\${slug ? \`<a href="https://polymarket.com/event/\${escHtml(slug)}" target="_blank" style="color:#e2e8f0;text-decoration:none;">\${escHtml(trades[0].title || key)}</a>\` : escHtml(trades[0].title || key)} &nbsp; <span class="\${pnlClass(pnl)}">\${_fmtPnl(pnl, invested)}</span> — \${trades.length} trades</h3>
     <div style="max-height:400px;overflow-y:auto;margin-top:8px;">
       <table>
         <thead><tr><th>Time</th><th>Type</th><th>Side</th><th>Outcome</th><th>Price</th><th>Shares</th><th>USDC</th><th>P&amp;L</th><th>Tx</th></tr></thead>
@@ -475,7 +486,7 @@ function drillDown(key) {
               <td>\${t.price > 0 ? "$"+t.price.toFixed(4) : ""}</td>
               <td>\${t.size.toFixed(2)}</td>
               <td>\${t.usdcSize > 0 ? "$"+t.usdcSize.toFixed(2) : ""}</td>
-              <td class="\${pnlClass(t.signed_usdc)}">\${fmt(t.signed_usdc)}</td>
+              <td class="\${pnlClass(t.signed_usdc)}">\${_fmtUsd(t.signed_usdc)}</td>
               <td>\${t.transactionHash ? '<a href="https://polygonscan.com/tx/'+t.transactionHash+'" target="_blank" style="color:#3b82f6;">🔗</a>' : ""}</td>
             </tr>
           \`).join("")}
@@ -499,38 +510,45 @@ function computeOverallPnlJs(rows) {
   const totalPnl = rows.reduce((s, r) => s + r.signed_usdc, 0);
   const wins = rows.filter(r => r.signed_usdc > 0).length;
   const losses = rows.filter(r => r.signed_usdc < 0).length;
-  return { total_pnl: totalPnl, trade_count: rows.length, unique_markets: new Set(rows.map(r => r.slug).filter(Boolean)).size, win_rate: rows.length > 0 ? wins / rows.length : 0, win_count: wins, loss_count: losses };
+  const totalInvested = rows.filter(r => (r.type === "TRADE" && r.side === "BUY") || r.type === "SPLIT").reduce((s, r) => s + r.usdcSize, 0);
+  return { total_pnl: totalPnl, total_invested: totalInvested, trade_count: rows.length, unique_markets: new Set(rows.map(r => r.slug).filter(Boolean)).size, win_rate: rows.length > 0 ? wins / rows.length : 0, win_count: wins, loss_count: losses };
 }
 
 function computePerCoinPnlJs(rows) {
   const groups = {};
   for (const r of rows) {
     const c = r.coin || "OTHER";
-    if (!groups[c]) groups[c] = { pnl: 0, trade_count: 0, markets: new Set(), wins: 0 };
-    groups[c].pnl += r.signed_usdc; groups[c].trade_count++;
+    if (!groups[c]) groups[c] = { pnl: 0, invested: 0, trade_count: 0, markets: new Set(), wins: 0 };
+    groups[c].pnl += r.signed_usdc;
+    if ((r.type === "TRADE" && r.side === "BUY") || r.type === "SPLIT") groups[c].invested += r.usdcSize;
+    groups[c].trade_count++;
     if (r.slug) groups[c].markets.add(r.slug);
     if (r.signed_usdc > 0) groups[c].wins++;
   }
-  return Object.entries(groups).map(([coin, g]) => ({ coin, pnl: g.pnl, trade_count: g.trade_count, unique_markets: g.markets.size, win_rate: g.trade_count > 0 ? g.wins / g.trade_count : 0 })).sort((a, b) => b.pnl - a.pnl);
+  return Object.entries(groups).map(([coin, g]) => ({ coin, pnl: g.pnl, invested: g.invested, trade_count: g.trade_count, unique_markets: g.markets.size, win_rate: g.trade_count > 0 ? g.wins / g.trade_count : 0 })).sort((a, b) => b.pnl - a.pnl);
 }
 
 function computePerTimeframePnlJs(rows) {
   const groups = {};
   for (const r of rows) {
     const tf = r.timeframe || "N/A";
-    if (!groups[tf]) groups[tf] = { pnl: 0, trade_count: 0, markets: new Set() };
-    groups[tf].pnl += r.signed_usdc; groups[tf].trade_count++;
+    if (!groups[tf]) groups[tf] = { pnl: 0, invested: 0, trade_count: 0, markets: new Set() };
+    groups[tf].pnl += r.signed_usdc;
+    if ((r.type === "TRADE" && r.side === "BUY") || r.type === "SPLIT") groups[tf].invested += r.usdcSize;
+    groups[tf].trade_count++;
     if (r.slug) groups[tf].markets.add(r.slug);
   }
-  return Object.entries(groups).map(([timeframe, g]) => ({ timeframe, pnl: g.pnl, trade_count: g.trade_count, unique_markets: g.markets.size })).sort((a, b) => b.pnl - a.pnl);
+  return Object.entries(groups).map(([timeframe, g]) => ({ timeframe, pnl: g.pnl, invested: g.invested, trade_count: g.trade_count, unique_markets: g.markets.size })).sort((a, b) => b.pnl - a.pnl);
 }
 
 function computePerMarketPnlJs(rows) {
   const groups = {};
   for (const r of rows) {
     const key = r.slug || r.title || "(unknown)";
-    if (!groups[key]) groups[key] = { slug: r.slug, title: r.title, coin: r.coin, timeframe: r.timeframe, pnl: 0, trade_count: 0, first_trade: Infinity, last_trade: -Infinity, buy_count: 0, sell_count: 0, redeem_count: 0, wins: 0 };
-    const g = groups[key]; g.pnl += r.signed_usdc; g.trade_count++;
+    if (!groups[key]) groups[key] = { slug: r.slug, title: r.title, coin: r.coin, timeframe: r.timeframe, pnl: 0, invested: 0, trade_count: 0, first_trade: Infinity, last_trade: -Infinity, buy_count: 0, sell_count: 0, redeem_count: 0, wins: 0 };
+    const g = groups[key]; g.pnl += r.signed_usdc;
+    if ((r.type === "TRADE" && r.side === "BUY") || r.type === "SPLIT") g.invested += r.usdcSize;
+    g.trade_count++;
     if (r.timestamp < g.first_trade) g.first_trade = r.timestamp;
     if (r.timestamp > g.last_trade) g.last_trade = r.timestamp;
     if (r.side === "BUY") g.buy_count++;
@@ -538,7 +556,7 @@ function computePerMarketPnlJs(rows) {
     if (r.type === "REDEEM") g.redeem_count++;
     if (r.signed_usdc > 0) g.wins++;
   }
-  return Object.entries(groups).map(([key, g]) => ({ key, slug: g.slug, title: g.title, display_name: normalizeMarketNameClient(g.slug || g.title), coin: g.coin, timeframe: g.timeframe, pnl: g.pnl, trade_count: g.trade_count, first_trade: g.first_trade === Infinity ? 0 : g.first_trade, last_trade: g.last_trade === -Infinity ? 0 : g.last_trade, win_rate: g.trade_count > 0 ? g.wins / g.trade_count : 0 })).sort((a, b) => b.pnl - a.pnl);
+  return Object.entries(groups).map(([key, g]) => ({ key, slug: g.slug, title: g.title, display_name: normalizeMarketNameClient(g.slug || g.title), coin: g.coin, timeframe: g.timeframe, pnl: g.pnl, invested: g.invested, trade_count: g.trade_count, first_trade: g.first_trade === Infinity ? 0 : g.first_trade, last_trade: g.last_trade === -Infinity ? 0 : g.last_trade, win_rate: g.trade_count > 0 ? g.wins / g.trade_count : 0 })).sort((a, b) => b.pnl - a.pnl);
 }
 
 function computeDailyPnlJs(rows) {
@@ -567,6 +585,17 @@ function showStatus(msg, type) { document.getElementById("statusArea").innerHTML
 function updateTimePresetButtons(d) { document.querySelectorAll("#timePresets button").forEach(b => b.classList.toggle("active", parseFloat(b.dataset.days) === d)); }
 function escHtml(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
 
+function _fmtUsd(v) {
+  return (v >= 0 ? "+" : "") + "$" + v.toFixed(2);
+}
+function _fmtPnl(v, invested) {
+  if (pctMode) {
+    if (!invested) return "—";
+    return (v >= 0 ? "+" : "") + (v / invested * 100).toFixed(1) + "%";
+  }
+  return _fmtUsd(v);
+}
+
 // ── Load / Refresh ──
 
 document.getElementById("loadBtn").addEventListener("click", () => loadData(loadDays));
@@ -590,6 +619,21 @@ document.getElementById("typeFilter").addEventListener("change", (e) => { curren
 document.getElementById("marketSearch").addEventListener("input", (e) => { currentSearch = e.target.value; renderAll(); });
 document.getElementById("dateFrom").addEventListener("change", (e) => { dateFrom = e.target.value; renderAll(); });
 document.getElementById("dateTo").addEventListener("change", (e) => { dateTo = e.target.value; renderAll(); });
+
+// ── Format toggle ──
+
+document.getElementById("fmtUsdBtn").addEventListener("click", () => {
+  pctMode = false;
+  document.getElementById("fmtUsdBtn").classList.add("active");
+  document.getElementById("fmtPctBtn").classList.remove("active");
+  renderAll();
+});
+document.getElementById("fmtPctBtn").addEventListener("click", () => {
+  pctMode = true;
+  document.getElementById("fmtUsdBtn").classList.remove("active");
+  document.getElementById("fmtPctBtn").classList.add("active");
+  renderAll();
+});
 
 // ── Sortable table headers ──
 

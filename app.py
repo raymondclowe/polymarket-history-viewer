@@ -61,6 +61,16 @@ def _color_pnl(val: float) -> str:
     return "color: #6b7280"
 
 
+def _fmt_pnl(val: float, invested: float = 0.0) -> str:
+    """Format P&L as $ or % depending on global pct_mode."""
+    if pct_mode:  # noqa: F821 — set at module level by sidebar radio
+        if invested == 0:
+            return "—"
+        return f"{val / invested * 100:+.1f}%"
+    sign = "+" if val >= 0 else ""
+    return f"{sign}${val:,.2f}"
+
+
 def _tx_link(tx_hash: str) -> str:
     """PolygonScan transaction link."""
     if not tx_hash:
@@ -193,6 +203,19 @@ date_end = st.sidebar.date_input("End date", value=ss.date_end)
 ss.date_start = date_start
 ss.date_end = date_end
 
+# ─────────────────────────────────────────────────────────────
+# Display mode toggle
+# ─────────────────────────────────────────────────────────────
+
+st.sidebar.header("Display")
+pct_mode = st.sidebar.radio(
+    "P&L Format",
+    options=["$ USD", "% Return"],
+    index=0,
+    help="%: P&L relative to capital deployed (BUY + SPLIT USDC volume per group).",
+)
+pct_mode = pct_mode == "% Return"
+
 # Convert to Unix timestamps for API queries
 since_ts = int(datetime.combine(date_start, datetime.min.time(), tzinfo=timezone.utc).timestamp())
 until_ts = int(datetime.combine(date_end, datetime.max.time(), tzinfo=timezone.utc).timestamp())
@@ -317,7 +340,7 @@ overall = compute_overall_pnl(filtered)
 
 c1, c2, c3, c4, c5 = st.columns(5)
 with c1:
-    st.metric("Total P&L", _fmt_usd(overall["total_pnl"]))
+    st.metric("Total P&L", _fmt_pnl(overall["total_pnl"], overall["total_invested"]))
 with c2:
     st.metric("Trades", overall["trade_count"])
 with c3:
@@ -336,7 +359,9 @@ st.subheader("P&L by Coin")
 coin_pnl = compute_per_coin_pnl(filtered)
 if not coin_pnl.empty:
     coin_display = coin_pnl.copy()
-    coin_display["P&L"] = coin_display["pnl"].apply(_fmt_usd)
+    coin_display["P&L"] = coin_display.apply(
+        lambda r: _fmt_pnl(r["pnl"], r["invested"]), axis=1
+    )
     coin_display["Win Rate"] = (coin_display["win_rate"] * 100).round(1).astype(str) + "%"
     st.dataframe(
         coin_display[["coin", "P&L", "trade_count", "unique_markets", "Win Rate"]].rename(
@@ -354,7 +379,9 @@ st.subheader("P&L by Timeframe")
 tf_pnl = compute_per_timeframe_pnl(filtered)
 if not tf_pnl.empty:
     tf_display = tf_pnl.copy()
-    tf_display["P&L"] = tf_display["pnl"].apply(_fmt_usd)
+    tf_display["P&L"] = tf_display.apply(
+        lambda r: _fmt_pnl(r["pnl"], r["invested"]), axis=1
+    )
     st.dataframe(
         tf_display[["timeframe", "P&L", "trade_count", "unique_markets"]].rename(
             columns={
@@ -408,7 +435,7 @@ if not market_pnl.empty:
 
     # Display columns (no raw key)
     display_df = mkt[[
-        "display_name", "coin", "timeframe", "pnl", "trade_count",
+        "display_name", "coin", "timeframe", "pnl", "invested", "trade_count",
         "first_trade_dt", "last_trade_dt", "slug",
     ]].rename(columns={
         "display_name": "Market",
@@ -420,7 +447,10 @@ if not market_pnl.empty:
         "last_trade_dt": "Last Trade",
         "slug": "Link",
     }).copy()
-    display_df["P&L"] = display_df["P&L"].apply(_fmt_usd)
+    display_df["P&L"] = display_df.apply(
+        lambda r: _fmt_pnl(r["P&L"], r["invested"]), axis=1
+    )
+    display_df = display_df.drop(columns=["invested"])
 
     # Build Polymarket event URLs from slugs (skip synthetic slugs)
     display_df["Link"] = display_df["Link"].apply(
@@ -498,6 +528,7 @@ if not market_pnl.empty:
 
             # Market P&L summary
             market_pnl_total = market_trades["signed_usdc"].sum()
+            market_invested = market_trades[market_trades["type"].isin(["BUY", "SPLIT"])]["usdcSize"].sum()
             market_trade_count = len(market_trades)
 
             # Polymarket event link (skip for platform transactions / synthetic slugs)
@@ -507,7 +538,7 @@ if not market_pnl.empty:
 
             st.metric(
                 f"Market P&L: {display_label}",
-                _fmt_usd(market_pnl_total),
+                _fmt_pnl(market_pnl_total, market_invested),
                 delta=f"{market_trade_count} trades",
             )
         else:
