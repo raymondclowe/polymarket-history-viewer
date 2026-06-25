@@ -14,7 +14,7 @@ edges:
     condition: when setting up the dev environment or running the project for the first time
   - target: patterns/INDEX.md
     condition: when starting a task — check the pattern index for a matching pattern file
-last_updated: 2026-06-21  # Time presets now trigger full API fetch (was client-side filter only), currentDays synced to loadDays
+last_updated: 2026-06-25  # Rolled back to commit 93c4206 (percent vs dollar), ac39f74 broke deploy. Spec created at spec/pnl-distribution-chart.md for re-apply.
 ---
 
 # Session Bootstrap
@@ -47,6 +47,15 @@ Then read this file fully before doing anything else in this session.
 **Worker routes:**
 - `GET /` — HTML dashboard (Chart.js SPA)
 - `GET /api/data?wallet=0x...&days=7` — JSON P&L data from API (days= for partial fetch)
+
+**Spec / pending re-apply:**
+Commit `ac39f74` had intended features but failed to deploy (template literal syntax error).
+See `spec/pnl-distribution-chart.md` for the full decomposed change list to re-apply one at a time:
+1. Market P&L Distribution box-plot chart by coin
+2. Summary card P&L mini-bar
+3. Market table + drill-down gradient backgrounds
+4. CSV export buttons
+5. `_check_js.py` pre-deploy validation script
 
 **Not yet built:**
 - Multi-wallet comparison mode
